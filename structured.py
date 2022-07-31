@@ -1,17 +1,39 @@
 from __future__ import annotations
 
-import array
-import ctypes
 import inspect
 import itertools
-import mmap
-import pickle
 import struct
-import sys
 import typing
 from enum import Enum
 from functools import cache
-from typing import Any, Callable, ClassVar, Iterable, TypeAlias
+from typing import Any, Callable, ClassVar, Iterable, TypeAlias, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import array
+    import ctypes
+    import mmap
+    import pickle
+    import sys
+
+    ReadOnlyBuffer: TypeAlias = bytes
+    # Anything that implements the read-write buffer interface. The buffer
+    # interface is defined purely on the C level, so we cannot define a normal
+    # Protocol for it (until PEP 688 is implemented). Instead we have to list
+    # the most common stdlib buffer classes in a Union.
+    if sys.version_info >= (3, 8):
+        WriteableBuffer: TypeAlias = (
+            bytearray | memoryview | array.array[Any] | mmap.mmap |
+            ctypes._CData | pickle.PickleBuffer
+        )
+    else:
+        WriteableBuffer: TypeAlias = (  # type: ignore
+            bytearray | memoryview | array.array[Any] | mmap.mmap |
+            ctypes._CData
+        )
+    ReadableBuffer: TypeAlias = ReadOnlyBuffer | WriteableBuffer
+else:
+    WritableBuffer: TypeAlias = bytearray
+    ReadableBuffer: TypeAlias = bytes | bytearray
 
 
 __all__ = [
@@ -25,23 +47,6 @@ __all__ = [
     'char', 'pascal',
     'pad',
 ]
-
-
-ReadOnlyBuffer: TypeAlias = bytes
-# Anything that implements the read-write buffer interface.
-# The buffer interface is defined purely on the C level, so we cannot define a
-# normal Protocol for it (until PEP 688 is implemented). Instead we have to list
-# the most common stdlib buffer classes in a Union.
-if sys.version_info >= (3, 8):
-    WriteableBuffer: TypeAlias = (
-        bytearray | memoryview | array.array[Any] | mmap.mmap | ctypes._CData |
-        pickle.PickleBuffer
-    )
-else:
-    WriteableBuffer: TypeAlias = (  # type: ignore
-        bytearray | memoryview | array.array[Any] | mmap.mmap | ctypes._CData
-    )
-ReadableBuffer: TypeAlias = ReadOnlyBuffer | WriteableBuffer
 
 
 class ByteOrder(Enum):
@@ -333,6 +338,7 @@ class Structured(metaclass=StructuredMeta, slots=True):
 
 
 if __name__ == '__main__':
+    import sys
     class A(Structured):
         byte: int8 = 0
         byte2: int8 = 0
@@ -345,6 +351,5 @@ if __name__ == '__main__':
     print(repr(dat))
     a = A()
     a.unpack(dat)
-    import sys
     print(a)
     print(sys.getsizeof(a))
