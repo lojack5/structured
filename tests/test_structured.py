@@ -48,7 +48,7 @@ class TestStructured:
                 return 'foo'
 
         assert ''.join(Base._attrs) == 'aAbBcCdDefghijk'
-        assert Base.struct.format == '2xxbBhHiIqQefd2ss2pp'
+        assert Base.struct.format == '3xbBhHiIqQefd2ss2pp'
 
         with pytest.raises(TypeError):
             class Base2(Structured):

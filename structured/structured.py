@@ -17,9 +17,8 @@ __all__ = [
 ]
 
 
-from functools import cache
+from functools import cache, reduce
 import inspect
-import itertools
 import re
 import struct
 import typing
@@ -74,6 +73,33 @@ def _struct(format: str) -> struct.Struct:
     return struct.Struct(format)
 
 
+def fold_overlaps(format1: str, format2: str) -> str:
+    """Combines two format strings into one, combining common types into counted
+    versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
+    byte order specifiers.
+
+    :param format1: First format string to combine, may be an empty string.
+    :param format2: Second format string to combine, must not be empty.
+    :return: The combined format string.
+    """
+    if not format1:
+        return format2
+    if ((overlap := format1[-1]) == format2[0] and
+         overlap not in ('s', 'p')):
+        reOverlap = re.compile('(.*?)(\d+)\D')
+        if match := reOverlap.match(format1):
+            prelude, count = match.groups()
+            count = int(count)
+        else:
+            prelude = format1[:-1]
+            count = 1
+        count += 1
+        format = f'{prelude}{count}{overlap}{format2[1:]}'
+    else:
+        format = format1 + format2
+    return format
+
+
 def compute_format(
         classname: str,
         typehints: dict[str, Any],
@@ -104,14 +130,11 @@ def compute_format(
             raise TypeError(
                 f'Public member {classname}.{varname} must be of the provided '
                 'structured.* types.')
-    # Fold repeated format specifiers (except for 's', and 'p')
-    return _struct(''.join((
-        # TODO: fold sequential pads: pad[2] + pad[3] = '2x3x', should be '5x'
-        fmt if (not fmt or fmt[-1] in ('s', 'p')
-                or (count := len(list(iterable))) == 1)
-        else f'{count}{fmt}'
-        for fmt, iterable in itertools.groupby(fmts)
-    ))), attrs
+    if fmts:
+        return _struct(reduce(fold_overlaps, fmts)), attrs
+    else:
+        # Special case for the Structured base class
+        return None, ()
 
 
 class counted(format_type):
@@ -340,20 +363,7 @@ class StructuredMeta(type):
                 f'{base_name} ({base_byte_order.name}). If this is intentional,'
                 ' use `byte_order_mode=OVERRIDE`.'
             )
-        # Fold overlaps
-        if ((overlap := base_format[-1]) == derived_format[0] and
-             overlap not in ('s', 'p')):
-            reOverlap = re.compile('(.*?)(\d+)\D')
-            if match := reOverlap.match(base_format):
-                prelude, count = match.groups()
-                count = int(count)
-            else:
-                prelude = base_format[:-1]
-                count = 1
-            count += 1
-            format = f'{prelude}{count}{overlap}{derived_format[1:]}'
-        else:
-            format = base_format + derived_format
+        format = fold_overlaps(base_format, derived_format)
         return _struct(derived_byte_order.value + format)
 
 
