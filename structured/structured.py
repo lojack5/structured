@@ -24,7 +24,7 @@ import struct
 import typing
 from enum import Enum
 from functools import cache
-from typing import Any, Callable, ClassVar, Iterable
+from typing import Any, Callable, ClassVar, Iterable, Optional
 
 from .type_checking import *
 
@@ -288,7 +288,7 @@ class StructuredMeta(type):
     @staticmethod
     def find_structured_superclass(
         bases: tuple[type],
-    ) -> type[Structured] | None:
+    ) -> Optional[type[Structured]]:
         """Find any Structured derived base classes, closes to this class in
         the inheritance tree.
 

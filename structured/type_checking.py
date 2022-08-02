@@ -1,5 +1,11 @@
+import sys
 import typing
-from typing import TypeAlias
+from typing import Union
+
+if sys.version_info < (3, 10):
+    from typing_extensions import TypeAlias
+else:
+    from typing import TypeAlias
 
 if typing.TYPE_CHECKING:
     import array
@@ -15,16 +21,15 @@ if typing.TYPE_CHECKING:
     # Protocol for it (until PEP 688 is implemented). Instead we have to list
     # the most common stdlib buffer classes in a Union.
     if sys.version_info >= (3, 8):
-        WriteableBuffer: TypeAlias = (
-            bytearray | memoryview | array.array[Any] | mmap.mmap |
-            ctypes._CData | pickle.PickleBuffer
-        )
+        WriteableBuffer: TypeAlias = Union[
+            bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData,
+            pickle.PickleBuffer
+        ]
     else:
-        WriteableBuffer: TypeAlias = (  # type: ignore
-            bytearray | memoryview | array.array[Any] | mmap.mmap |
-            ctypes._CData
-        )
-    ReadableBuffer: TypeAlias = ReadOnlyBuffer | WriteableBuffer
+        WriteableBuffer: TypeAlias = Union[  # type: ignore
+            bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData
+        ]
+    ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WriteableBuffer]
 else:
     WritableBuffer: TypeAlias = bytearray
-    ReadableBuffer: TypeAlias = bytes | bytearray
+    ReadableBuffer: TypeAlias = Union[bytes, bytearray]
