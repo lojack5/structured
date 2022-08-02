@@ -23,10 +23,15 @@ import re
 import struct
 import typing
 from enum import Enum
-from functools import cache
-from typing import Any, Callable, ClassVar, Iterable, Optional
+from typing import Any, Callable, ClassVar, Iterable, Optional, Type
 
 from .type_checking import *
+
+# Python < 3.9 compat
+try:
+    from functools import cache
+except ImportError:     # pragma: no cover
+    from functools import lru_cache as cache    # pragma: no cover
 
 
 class ByteOrder(Enum):
@@ -118,7 +123,7 @@ class counted(format_type):
     """Base class for string format types.  Allows for specifying the count for
     these types.
     """
-    def __class_getitem__(cls: type[counted], count: int) -> type[counted]:
+    def __class_getitem__(cls: Type[counted], count: int) -> Type[counted]:
         if not isinstance(count, int):
             raise TypeError('count must be an integer.')
         if count <= 0:
@@ -245,14 +250,14 @@ class StructuredMeta(type):
     :type byte_order: ByteOrder
     """
     def __new__(
-            cls: type[StructuredMeta],
+            cls: Type[StructuredMeta],
             typename: str,
             bases: tuple[type, ...],
             classdict: dict[str, Any],
             slots: bool = False,
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
-        ) -> type[Structured]:
+        ) -> Type[Structured]:
         st, attrs = compute_format(
             typename, classdict.get('__annotations__', {}), byte_order
         )
@@ -288,7 +293,7 @@ class StructuredMeta(type):
     @staticmethod
     def find_structured_superclass(
         bases: tuple[type],
-    ) -> Optional[type[Structured]]:
+    ) -> Optional[Type[Structured]]:
         """Find any Structured derived base classes, closes to this class in
         the inheritance tree.
 
