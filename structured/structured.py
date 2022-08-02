@@ -24,34 +24,9 @@ import struct
 import typing
 from enum import Enum
 from functools import cache
-from typing import Any, Callable, ClassVar, Iterable, TypeAlias, TYPE_CHECKING
+from typing import Any, Callable, ClassVar, Iterable
 
-if TYPE_CHECKING:
-    import array
-    import ctypes
-    import mmap
-    import pickle
-    import sys
-
-    ReadOnlyBuffer: TypeAlias = bytes
-    # Anything that implements the read-write buffer interface. The buffer
-    # interface is defined purely on the C level, so we cannot define a normal
-    # Protocol for it (until PEP 688 is implemented). Instead we have to list
-    # the most common stdlib buffer classes in a Union.
-    if sys.version_info >= (3, 8):
-        WriteableBuffer: TypeAlias = (
-            bytearray | memoryview | array.array[Any] | mmap.mmap |
-            ctypes._CData | pickle.PickleBuffer
-        )
-    else:
-        WriteableBuffer: TypeAlias = (  # type: ignore
-            bytearray | memoryview | array.array[Any] | mmap.mmap |
-            ctypes._CData
-        )
-    ReadableBuffer: TypeAlias = ReadOnlyBuffer | WriteableBuffer
-else:
-    WritableBuffer: TypeAlias = bytearray
-    ReadableBuffer: TypeAlias = bytes | bytearray
+from .type_checking import *
 
 
 class ByteOrder(Enum):
@@ -131,6 +106,7 @@ def compute_format(
                 'structured.* types.')
     # Fold repeated format specifiers (except for 's', and 'p')
     return _struct(''.join((
+        # TODO: fold sequential pads: pad[2] + pad[3] = '2x3x', should be '5x'
         fmt if (not fmt or fmt[-1] in ('s', 'p')
                 or (count := len(list(iterable))) == 1)
         else f'{count}{fmt}'
@@ -149,7 +125,7 @@ class counted(format_type):
             raise ValueError('count must be positive.')
         class _counted(cls):
             format: ClassVar[str] = f'{count}{cls.format}'
-        if qualname := getattr(cls, '__qualname__', None):
+        if qualname := getattr(cls, '__qualname__', None):  # pragma: no branch
             _counted.__qualname__ = f'{qualname}[{count}]'
         return _counted
 
@@ -302,7 +278,7 @@ class StructuredMeta(type):
         if slots:
             classdict['__slots__'] = attrs
             for attr in attrs:
-                del classdict[attr]
+                classdict.pop(attr, None)
         # Setup class variables
         classdict['struct'] = st
         classdict['_attrs'] = attrs
