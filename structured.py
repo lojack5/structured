@@ -63,6 +63,13 @@ class ByteOrder(Enum):
     NETWORK = '!'
 
 
+class ByteOrderMode(Enum):
+    """How derived classes with conflicting byte order markings should function.
+    """
+    OVERRIDE = 'override'
+    STRICT = 'strict'
+
+
 class format_type:
     """Base class for annotating types in a Structured subclass."""
     format: ClassVar[str] = ''
@@ -262,11 +269,30 @@ class StructuredMeta(type):
             bases: tuple[type, ...],
             classdict: dict[str, Any],
             slots: bool = False,
-            byte_order: ByteOrder = ByteOrder.DEFAULT
+            byte_order: ByteOrder = ByteOrder.DEFAULT,
+            byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
         ) -> type[Structured]:
         st, attrs = compute_format(
             typename, classdict.get('__annotations__', {}), byte_order
         )
+        # See if we're extending a Structured base class
+        structured_base = cls.find_structured_superclass(bases)
+        if structured_base:
+            base_struct = structured_base.struct
+            base_attrs = structured_base._attrs
+            st = cls.merge_formats(
+                structured_base, base_struct,
+                typename, st,
+                byte_order_mode,
+            )
+            # Check for duplicate attributes
+            if dupes := ', '.join(set(attrs) & set(base_attrs)):
+                raise SyntaxError(
+                    f'Duplicate structure attributes in class {typename} '
+                    f'already defined in base class {structured_base.__name__}:'
+                    f' {dupes}.'
+                )
+            attrs = base_attrs + attrs
         # Enable slots?
         if slots:
             classdict['__slots__'] = attrs
@@ -277,6 +303,54 @@ class StructuredMeta(type):
         classdict['_attrs'] = attrs
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
+
+    @staticmethod
+    def find_structured_superclass(
+        bases: tuple[type],
+    ) -> type[Structured] | None:
+        for chain in bases:
+            for base in chain.__mro__:
+                # Structured derived, but not Structured itself
+                if issubclass(base, Structured) and base is not Structured:
+                    return base
+        return None
+
+    @classmethod
+    def merge_formats(
+        cls,
+        base: type[Structured],
+        base_struct: struct.Struct,
+        derived_name: str,
+        derived_struct: struct.Struct,
+        mode: ByteOrderMode,
+    ) -> struct.Struct:
+        # Extract byte orders
+        base_byte_order, base_format = cls.extract_byte_order(
+            base_struct.format
+        )
+        derived_byte_order, derived_format = cls.extract_byte_order(
+            derived_struct.format
+        )
+        if (mode is ByteOrderMode.OVERRIDE or 
+            base_byte_order is derived_byte_order):
+            format = derived_byte_order.value + base_format + derived_format
+        else:   # ByteOrderMode.STRICT and unmatched byte orders
+            raise ValueError(
+                'Incompatable byte order specifications between class '
+                f'{derived_name} ({derived_byte_order.name}) and base class '
+                f'{base.__name__} ({base_byte_order.name}). If this is '
+                'intentional, use `byte_order_mode=OVERRIDE`.'
+            )
+        return _struct(format)
+
+    @staticmethod
+    def extract_byte_order(format: str) -> tuple[ByteOrder, str]:
+        try:
+            byte_order = ByteOrder(format[0])
+            format = format[1:]
+        except ValueError:
+            byte_order = ByteOrder.DEFAULT
+        return byte_order, format
 
 
 class Structured(metaclass=StructuredMeta, slots=True):
