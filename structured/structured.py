@@ -104,6 +104,8 @@ def compute_format(
         classname: str,
         typehints: dict[str, Any],
         byte_order: ByteOrder = ByteOrder.DEFAULT,
+        globals: dict = {},
+        locals: dict = {},
     ) -> tuple[struct.Struct, tuple[str, ...]]:
     """Create a struct.Struct object and matching attribute names from a
     type hints dictionary.  Ignores private members (those beginning with '_').
@@ -119,7 +121,7 @@ def compute_format(
     fmts: list[str] = [byte_order.value]
     attrs: list[str] = []
     for varname, vartype in typehints.items():
-        vartype = eval_annotation(None, vartype)
+        vartype = eval_annotation(vartype, globals, locals)
         if is_classvar(vartype):
             continue
         elif issubclass(vartype, format_type):
@@ -170,7 +172,7 @@ class uint8(int, format_type):
 
 
 class int16(int, format_type):
-    """16-bit signed integer.""" 
+    """16-bit signed integer."""
     format: ClassVar[str] = 'h'
 
 
@@ -228,28 +230,9 @@ class pascal(str, counted):
     format: ClassVar[str] = 'p'
 
 
-def eval_annotation(method: Callable, annotation: Any) -> Any:
-    """Evaluate stringized type annotations on method.  This occurs if
-    `from __future__ import annotations` is used, or on python versions
-    past 3.10.
-
-    In most cases, typing.get_type_hints should be used instead.  However,
-    in the case of a metaclass, the class we want to get type hints for has
-    not been created yet, so we have to do this ourselves.
-
-    :param method: For evaluating type hints on a method, that method may have
-        been defined within an inner scope.  Providing the method allows for
-        grabbing annotations that where defined within that scope.
-    :param annotation: The type annotation to evaluate.
-    :return: The resolved type annotation.
-    """
+def eval_annotation(annotation: Any, globalsn, localsn) -> Any:
     if isinstance(annotation, str):
-        locals = None
-        globals = getattr(method, '__globals__', None)
-        method = inspect.unwrap(method)
-        globals = getattr(method, '__globals__', globals)
-        locals = getattr(method, '__locals__', locals)
-        return eval(annotation, globals, locals)
+        return eval(annotation, globalsn, localsn)
     else:
         return annotation
 
@@ -276,8 +259,11 @@ class StructuredMeta(type):
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
         ) -> type[Structured]:
+        module = sys.modules.get(classdict['__module__'], None)
+        globalsn = getattr(module, '__dict__', {})
         st, attrs = compute_format(
-            typename, classdict.get('__annotations__', {}), byte_order
+            typename, classdict.get('__annotations__', {}), byte_order,
+            globalsn, classdict,
         )
         # See if we're extending a Structured base class
         structured_base = cls.find_structured_superclass(bases)

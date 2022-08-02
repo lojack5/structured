@@ -64,13 +64,25 @@ class TestStructured:
             d: int16
         assert Derived.struct.format == 'b3h'
         # Test string types aren't folded
-        for string_type in (char, pascal):
-            class Base2(Structured):
-                a: string_type[10]
-            class Derived2(Base2):
-                b: string_type[3]
-            c = string_type.format
-            assert Derived2.struct.format == f'10{c}3{c}'
+        # We shouldn't do
+        ##
+        ##  for string_type in (char, pascal):
+        ##     class Base2(Structured):
+        ##         a: string_type[10]
+        # Since if annotations are strings (the will be in future python
+        # versions), even `typing.get_type_hints` would fail to get the
+        # type hints on Base2
+        class Base2(Structured):
+            a: char[10]
+        class Derived2(Base2):
+            b: char[3]
+        assert Derived2.struct.format == '10s3s'
+
+        class Base3(Structured):
+            a: pascal[10]
+        class Derived3(Base3):
+            b: pascal[3]
+        assert Derived3.struct.format == '10p3p'
 
     def test_duplicate_names(self) -> None:
         class Base(Structured):
