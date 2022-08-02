@@ -19,6 +19,7 @@ __all__ = [
 
 import inspect
 import itertools
+import re
 import struct
 import typing
 from enum import Enum
@@ -285,7 +286,7 @@ class StructuredMeta(type):
             base_struct = structured_base.struct
             base_attrs = structured_base._attrs
             st = cls.merge_formats(
-                structured_base, base_struct,
+                structured_base.__name__, base_struct,
                 typename, st,
                 byte_order_mode,
             )
@@ -312,6 +313,12 @@ class StructuredMeta(type):
     def find_structured_superclass(
         bases: tuple[type],
     ) -> type[Structured] | None:
+        """Find any Structured derived base classes, closes to this class in
+        the inheritance tree.
+
+        :param bases: Explicitly listed base classes.
+        :return: The closest Structured derived base class, or None.
+        """
         for chain in bases:
             for base in chain.__mro__:
                 # Structured derived, but not Structured itself
@@ -322,12 +329,26 @@ class StructuredMeta(type):
     @classmethod
     def merge_formats(
         cls,
-        base: type[Structured],
+        base_name: str,
         base_struct: struct.Struct,
         derived_name: str,
         derived_struct: struct.Struct,
         mode: ByteOrderMode,
     ) -> struct.Struct:
+        """Given two classes' struct instances, combine their structure format
+        strings.  If the two strings have differing byte order modes, behavior
+        is determined by `mode`: in STRICT, both must match, in OVERRIDE, the
+        derived class's byte order mode is used.  Overlapping format specifiers
+        are folded, i.e.: 'h10q' + 'qhi' -> 'h11qhi'.
+
+        :param base_name: Base class's name, used for error messages.
+        :param base_struct: Base class's struct instance.
+        :param derived_name: Derived class's name, used for error messages.
+        :param derived_struct: Derived class's struct instance.
+        :param mode: How to handle conflicts in byte order mode.
+        :raises ValueError: If mode is STRICT and byte_order markers differ.
+        :return: A new struct.Struct with the combined format.
+        """
         # Extract byte orders
         base_byte_order, base_format = cls.extract_byte_order(
             base_struct.format
@@ -335,20 +356,40 @@ class StructuredMeta(type):
         derived_byte_order, derived_format = cls.extract_byte_order(
             derived_struct.format
         )
-        if (mode is ByteOrderMode.OVERRIDE or 
-            base_byte_order is derived_byte_order):
-            format = derived_byte_order.value + base_format + derived_format
-        else:   # ByteOrderMode.STRICT and unmatched byte orders
+        if (mode is ByteOrderMode.STRICT and
+            base_byte_order is not derived_byte_order):
             raise ValueError(
                 'Incompatable byte order specifications between class '
                 f'{derived_name} ({derived_byte_order.name}) and base class '
-                f'{base.__name__} ({base_byte_order.name}). If this is '
-                'intentional, use `byte_order_mode=OVERRIDE`.'
+                f'{base_name} ({base_byte_order.name}). If this is intentional,'
+                ' use `byte_order_mode=OVERRIDE`.'
             )
-        return _struct(format)
+        # Fold overlaps
+        if ((overlap := base_format[-1]) == derived_format[0] and
+             overlap not in ('s', 'p')):
+            reOverlap = re.compile('(.*?)(\d+)\D')
+            if match := reOverlap.match(base_format):
+                prelude, count = match.groups()
+                count = int(count)
+            else:
+                prelude = base_format[:-1]
+                count = 1
+            count += 1
+            format = f'{prelude}{count}{overlap}{derived_format[1:]}'
+        else:
+            format = base_format + derived_format
+        return _struct(derived_byte_order.value + format)
+
 
     @staticmethod
     def extract_byte_order(format: str) -> tuple[ByteOrder, str]:
+        """Get the byte order marker from a format string, and return it along
+        with the format string with the byte order marker removed.
+
+        :param format: A format string for struct.
+        :return: The byte order mode and format string without the byte order
+            marker.
+        """
         try:
             byte_order = ByteOrder(format[0])
             format = format[1:]
@@ -413,21 +454,3 @@ class Structured(metaclass=StructuredMeta, slots=True):
         """Descriptive representation of this class."""
         vals = ', '.join((f'{attr}={getattr(self, attr)}' for attr in self._attrs))
         return f'{type(self).__name__}({vals})'
-
-
-if __name__ == '__main__':
-    import sys
-    class A(Structured):
-        byte: int8 = 0
-        byte2: int8 = 0
-        bigger: int16 = 0
-        _: pad[2] = 0
-        hello: char[5] = 'test!'
-
-    print(A.struct.format)
-    dat = A.struct.pack(16, 12, 32, b'hello')
-    print(repr(dat))
-    a = A()
-    a.unpack(dat)
-    print(a)
-    print(sys.getsizeof(a))
