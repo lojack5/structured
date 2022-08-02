@@ -1,5 +1,22 @@
 from __future__ import annotations
 
+
+__author__ = 'lojack5'
+__version__ = '1.0'
+
+__all__ = [
+    'Structured',
+    'ByteOrder', 'ByteOrderMode',
+    'int8', 'uint8',
+    'int16', 'uint16',
+    'int32', 'uin32',
+    'int64', 'uint64',
+    'float6', 'float32', 'float64',
+    'char', 'pascal',
+    'pad',
+]
+
+
 import inspect
 import itertools
 import struct
@@ -34,19 +51,6 @@ if TYPE_CHECKING:
 else:
     WritableBuffer: TypeAlias = bytearray
     ReadableBuffer: TypeAlias = bytes | bytearray
-
-
-__all__ = [
-    'Structured',
-    'ByteOrder',
-    'int8', 'uint8',
-    'int16', 'uint16',
-    'int32', 'uin32',
-    'int64', 'uint64',
-    'float6', 'float32', 'float64',
-    'char', 'pascal',
-    'pad',
-]
 
 
 class ByteOrder(Enum):
