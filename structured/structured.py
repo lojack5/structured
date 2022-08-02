@@ -362,6 +362,8 @@ class StructuredMeta(type):
         :return: The byte order mode and format string without the byte order
             marker.
         """
+        if not format:
+            return ByteOrder.DEFAULT, ''
         try:
             byte_order = ByteOrder(format[0])
             format = format[1:]
