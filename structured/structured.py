@@ -78,12 +78,14 @@ def fold_overlaps(format1: str, format2: str) -> str:
     versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
     byte order specifiers.
 
-    :param format1: First format string to combine, may be an empty string.
-    :param format2: Second format string to combine, must not be empty.
+    :param format1: First format string to combine, may be empty.
+    :param format2: Second format string to combine, may be empty.
     :return: The combined format string.
     """
     if not format1:
         return format2
+    elif not format2:
+        return format1
     if ((overlap := format1[-1]) == format2[0] and
          overlap not in ('s', 'p')):
         reOverlap = re.compile('(.*?)(\d+)\D')
