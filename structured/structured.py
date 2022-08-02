@@ -9,9 +9,9 @@ __all__ = [
     'ByteOrder', 'ByteOrderMode',
     'int8', 'uint8',
     'int16', 'uint16',
-    'int32', 'uin32',
+    'int32', 'uint32',
     'int64', 'uint64',
-    'float6', 'float32', 'float64',
+    'float16', 'float32', 'float64',
     'char', 'pascal',
     'pad',
 ]
