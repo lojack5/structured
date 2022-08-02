@@ -23,7 +23,7 @@ import re
 import struct
 import typing
 from enum import Enum
-from typing import Any, Callable, ClassVar, Iterable, Optional, Type
+from typing import Any, Callable, ClassVar, Iterable, Optional
 
 from .type_checking import *
 
@@ -123,7 +123,7 @@ class counted(format_type):
     """Base class for string format types.  Allows for specifying the count for
     these types.
     """
-    def __class_getitem__(cls: Type[counted], count: int) -> Type[counted]:
+    def __class_getitem__(cls: type[counted], count: int) -> type[counted]:
         if not isinstance(count, int):
             raise TypeError('count must be an integer.')
         if count <= 0:
@@ -250,14 +250,14 @@ class StructuredMeta(type):
     :type byte_order: ByteOrder
     """
     def __new__(
-            cls: Type[StructuredMeta],
+            cls: type[StructuredMeta],
             typename: str,
             bases: tuple[type, ...],
             classdict: dict[str, Any],
             slots: bool = False,
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
-        ) -> Type[Structured]:
+        ) -> type[Structured]:
         st, attrs = compute_format(
             typename, classdict.get('__annotations__', {}), byte_order
         )
@@ -293,7 +293,7 @@ class StructuredMeta(type):
     @staticmethod
     def find_structured_superclass(
         bases: tuple[type],
-    ) -> Optional[Type[Structured]]:
+    ) -> Optional[type[Structured]]:
         """Find any Structured derived base classes, closes to this class in
         the inheritance tree.
 
