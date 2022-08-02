@@ -17,6 +17,7 @@ __all__ = [
 ]
 
 
+from functools import cache
 import inspect
 import itertools
 import re
@@ -26,12 +27,6 @@ from enum import Enum
 from typing import Any, Callable, ClassVar, Iterable, Optional
 
 from .type_checking import *
-
-# Python < 3.9 compat
-try:
-    from functools import cache
-except ImportError:     # pragma: no cover
-    from functools import lru_cache as cache    # pragma: no cover
 
 
 class ByteOrder(Enum):
