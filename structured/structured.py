@@ -21,9 +21,8 @@ __all__ = [
 from functools import cache, reduce
 import re
 import struct
-import typing
 from enum import Enum
-from typing import Any, ClassVar, Iterable, Optional, TypeVar
+from typing import Any, ClassVar, Iterable, Optional, TypeVar, get_origin
 
 from .type_checking import *
 
@@ -63,9 +62,7 @@ def is_classvar(annotation: Any) -> bool:
 
     :param annotation: Fully resolved type annotation to test.
     """
-    return (annotation is ClassVar or
-            type(annotation) is typing._GenericAlias
-            and annotation.__origin__ is ClassVar)
+    return get_origin(annotation) is ClassVar
 
 
 @cache
