@@ -1,6 +1,8 @@
 __author__ = 'Lojack'
 
 import pytest
+
+import structured
 from structured import *
 
 
@@ -47,7 +49,7 @@ class TestStructured:
             def method(self):
                 return 'foo'
 
-        assert ''.join(Base._attrs) == 'aAbBcCdDefghijk'
+        assert ''.join(Base._attr_actions.keys()) == 'aAbBcCdDefghijk'
         assert Base.struct.format == '3xbBhHiIqQefd2ss2pp'
 
         with pytest.raises(TypeError):
@@ -107,7 +109,7 @@ class TestStructured:
             a: int8
             b: int16
             _: pad[4]
-        assert Base._attrs == Base.__slots__
+        assert tuple(Base._attr_actions.keys()) == Base.__slots__
 
     def test_pack_unpack(self) -> None:
         class Base(Structured):
@@ -166,3 +168,74 @@ class TestCounted:
             pad['']
         with pytest.raises(ValueError):
             pad[0]
+
+
+class TestFormatted:
+    def test_subclassing_any(self) -> None:
+        class MutableType(Formatted):
+            def __init__(self, value: int):
+                self._value = value
+
+            def __int__(self) -> int:
+                return self._value
+
+            def __index__(self) -> int:
+                # For struct.pack
+                return self._value
+
+            def negate(self) -> None:
+                self._value = -self._value
+
+        assert MutableType[int16].format == int16.format
+        assert MutableType[int16].apply_on_load
+
+        class Base(Structured, slots=True):
+            a: MutableType[int16]
+            b: MutableType[uint32]
+
+        b = Base()
+        data = Base.struct.pack(11, 42)
+        b.unpack(data)
+        assert isinstance(b.a, MutableType)
+        assert type(b.a) is MutableType[int16]
+        assert int(b.a) == 11
+
+        packed = b.pack()
+        assert data == packed
+
+        b.a.negate()
+        assert int(b.a) == -11
+
+
+    def test_subclassing_specialized(self) -> None:
+        class MutableType(Formatted):
+            _types = {int8, int16}
+        assert MutableType[int8].format == int8.format
+        assert MutableType[int8].apply_on_load
+
+    def test_errors(self) -> None:
+        class Error1(Formatted):
+            _types = frozenset({int})
+        with pytest.raises(TypeError):
+            # Errors due to not having `int8` in `_types`
+            Error1[int8]
+        with pytest.raises(TypeError):
+            # Errors due to `int` not being a `format_type`
+            Error1[int]
+
+        class Error2(Formatted):
+            pass
+        with pytest.raises(TypeError):
+            Error2[int]
+
+
+def test_extract_byte_order() -> None:
+    # Test the branch not exercised by the above tests
+    byte_order, format = structured.StructuredMeta.extract_byte_order('')
+    assert byte_order is ByteOrder.DEFAULT
+    assert format == ''
+
+
+def test_fold_overlaps() -> None:
+    # Test the branch not exercised by the above tests.
+    assert structured.fold_overlaps('b', '') == 'b'

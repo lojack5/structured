@@ -5,7 +5,7 @@ __author__ = 'lojack5'
 __version__ = '1.0'
 
 __all__ = [
-    'Structured',
+    'Structured', 'Formatted',
     'ByteOrder', 'ByteOrderMode',
     'int8', 'uint8',
     'int16', 'uint16',
@@ -18,14 +18,16 @@ __all__ = [
 
 
 from functools import cache, reduce
-import inspect
 import re
 import struct
 import typing
 from enum import Enum
-from typing import Any, Callable, ClassVar, Iterable, Optional
+from typing import Any, ClassVar, Iterable, Optional, TypeVar
 
 from .type_checking import *
+
+
+_T = TypeVar('_T')
 
 
 class ByteOrder(Enum):
@@ -52,6 +54,7 @@ class ByteOrderMode(Enum):
 class format_type:
     """Base class for annotating types in a Structured subclass."""
     format: ClassVar[str] = ''
+    apply_on_load: ClassVar[bool] = False
 
 
 def is_classvar(annotation: Any) -> bool:
@@ -102,13 +105,16 @@ def fold_overlaps(format1: str, format2: str) -> str:
     return format
 
 
+def noop_action(x: _T) -> _T:
+    return x
+
 def compute_format(
         classname: str,
         typehints: dict[str, Any],
         byte_order: ByteOrder = ByteOrder.DEFAULT,
         globals: dict = {},
         locals: dict = {},
-    ) -> tuple[struct.Struct, tuple[str, ...]]:
+    ) -> tuple[struct.Struct, dict[str, format_type | None]]:
     """Create a struct.Struct object and matching attribute names from a
     type hints dictionary.  Ignores private members (those beginning with '_').
 
@@ -121,7 +127,7 @@ def compute_format(
         as the attribute names to pair the values with.
     """
     fmts: list[str] = [byte_order.value]
-    attrs: list[str] = []
+    attr_actions: dict[str, format_type | None] = {}
     for varname, vartype in typehints.items():
         vartype = eval_annotation(vartype, globals, locals)
         if is_classvar(vartype):
@@ -129,16 +135,13 @@ def compute_format(
         elif issubclass(vartype, format_type):
             fmts.append(vartype.format)
             if not issubclass(vartype, pad):
-                attrs.append(varname)
+                action = vartype if vartype.apply_on_load else noop_action
+                attr_actions[varname] = action
         elif not varname[0] == '_':
             raise TypeError(
                 f'Public member {classname}.{varname} must be of the provided '
                 'structured.* types.')
-    if fmts:
-        return _struct(reduce(fold_overlaps, fmts)), attrs
-    else:
-        # Special case for the Structured base class
-        return None, ()
+    return _struct(reduce(fold_overlaps, fmts)), attr_actions
 
 
 class counted(format_type):
@@ -239,6 +242,40 @@ def eval_annotation(annotation: Any, globalsn, localsn) -> Any:
         return annotation
 
 
+class Formatted:
+    """Class used for creating new format types.  Provides a class getitem
+    to select the format specifier, by grabbing from one of the provided format
+    types.  The allowed types may be overridden by overriding cls._types.
+
+    For examples of how to use this, see `TestFormatted`.
+    """
+    _types: frozenset[format_type] = frozenset()
+
+    @classmethod    # Need to remark as classmethod since we're caching
+    @cache
+    def __class_getitem__(cls, key: type) -> type[format_type]:
+        if cls._types is Formatted._types:
+            # Default, just allow any format type
+            if issubclass(key, format_type):
+                fmt = key.format
+            else:
+                raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
+        else:
+            # Overridden _types, get from that dictionary
+            if key not in cls._types:
+                raise TypeError(f'Formatted key must be one of the allowed types of {cls.__name__}.')
+            elif issubclass(key, format_type):
+                fmt = key.format
+            else:
+                raise TypeError(f'Formatted option {key!r} must be a format type.')
+        # Create the subclass
+        class new_cls(cls, format_type):
+            format: ClassVar[str] = fmt
+            apply_on_load: ClassVar[bool] = True
+        new_cls.__qualname__ = f'{cls.__qualname__}[{key}]'
+        return new_cls
+
+
 class StructuredMeta(type):
     """Metaclass for Structured subclasses.  Handles computing the format string
     and determining assigned class attributes.  Accepts two metaclass arguments:
@@ -263,7 +300,7 @@ class StructuredMeta(type):
         ) -> type[Structured]:
         module = sys.modules.get(classdict['__module__'], None)
         globalsn = getattr(module, '__dict__', {})
-        st, attrs = compute_format(
+        st, attr_actions = compute_format(
             typename, classdict.get('__annotations__', {}), byte_order,
             globalsn, classdict,
         )
@@ -271,28 +308,28 @@ class StructuredMeta(type):
         structured_base = cls.find_structured_superclass(bases)
         if structured_base:
             base_struct = structured_base.struct
-            base_attrs = structured_base._attrs
+            base_attr_actions = structured_base._attr_actions
             st = cls.merge_formats(
                 structured_base.__name__, base_struct,
                 typename, st,
                 byte_order_mode,
             )
             # Check for duplicate attributes
-            if dupes := ', '.join(set(attrs) & set(base_attrs)):
+            if dupes := ', '.join(set(attr_actions) & set(base_attr_actions)):
                 raise SyntaxError(
                     f'Duplicate structure attributes in class {typename} '
                     f'already defined in base class {structured_base.__name__}:'
                     f' {dupes}.'
                 )
-            attrs = base_attrs + attrs
+            attr_actions = base_attr_actions.copy() | attr_actions
         # Enable slots?
         if slots:
-            classdict['__slots__'] = attrs
-            for attr in attrs:
+            classdict['__slots__'] = tuple(attr_actions.keys())
+            for attr in attr_actions:
                 classdict.pop(attr, None)
         # Setup class variables
         classdict['struct'] = st
-        classdict['_attrs'] = attrs
+        classdict['_attr_actions'] = attr_actions
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
 
@@ -378,7 +415,7 @@ class Structured(metaclass=StructuredMeta, slots=True):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
     struct: ClassVar[struct.Struct]
-    _attrs: ClassVar[tuple[str, ...]]
+    _attr_actions: ClassVar[dict[str, format_type | None]]
 
     def _set(self, values: Iterable[Any]) -> None:
         """Assigns class members' values.
@@ -386,14 +423,14 @@ class Structured(metaclass=StructuredMeta, slots=True):
         :param values: Sequence of values in the same order as the attributes
             they should be assigned to.  Attribute order is stored in _attrs.
         """
-        for attr, value in zip(self._attrs, values):
-            setattr(self, attr, value)
+        for (attr, action), value in zip(self._attr_actions.items(), values):
+            setattr(self, attr, action(value))
 
     def _get(self) -> Iterable[Any]:
         """Create an iterable of values to pack with.  Attribute order these
         values are retrived from is stored in _attrs.
         """
-        return (getattr(self, attr) for attr in self._attrs)
+        return (getattr(self, attr) for attr in self._attr_actions)
 
     def unpack(self, stream: ReadableBuffer) -> None:
         """Unpack values from `stream` according to this class's format string,
@@ -428,5 +465,8 @@ class Structured(metaclass=StructuredMeta, slots=True):
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
-        vals = ', '.join((f'{attr}={getattr(self, attr)}' for attr in self._attrs))
+        vals = ', '.join((
+            f'{attr}={getattr(self, attr)}'
+            for attr in self._attr_actions
+        ))
         return f'{type(self).__name__}({vals})'
