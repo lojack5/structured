@@ -107,6 +107,7 @@ def fold_overlaps(format1: str, format2: str) -> str:
 
 
 def noop_action(x: _T) -> _T:
+    """Do nothing."""
     return x
 
 def compute_format(
@@ -116,8 +117,9 @@ def compute_format(
         globals: dict = {},
         locals: dict = {},
     ) -> tuple[struct.Struct, dict[str, Optional[format_type]]]:
-    """Create a struct.Struct object and matching attribute names from a
-    type hints dictionary.  Ignores private members (those beginning with '_').
+    """Create a struct.Struct object and matching attribute names and actions
+    from a type hints-like dictionary.  Ignores private members (those beginning
+    with '_').
 
     :param classname: Class name for use in error messages.
     :param typehints: Mapping of attribute names to type annotations.  Can be
@@ -125,7 +127,8 @@ def compute_format(
     :param byte_order: Any byte order specifiers to add to the format string.
     :raises TypeError: If any annotations are not a subclass of format_type.
     :return: A struct.Struct instance for packing and unpacking data, as well
-        as the attribute names to pair the values with.
+        as the attribute names mapped to any actions needed to apply to them
+        on unpacking.
     """
     fmts: list[str] = [byte_order.value]
     attr_actions: dict[str, Optional[format_type]] = {}
@@ -169,6 +172,7 @@ class pad(counted):
 
 
 class bool8(int, format_type):
+    """bool struct type, stored as an integer."""
     format: ClassVar[str] = '?'
 
 
@@ -241,7 +245,19 @@ class pascal(str, counted):
     format: ClassVar[str] = 'p'
 
 
-def eval_annotation(annotation: Any, globalsn, localsn) -> Any:
+def eval_annotation(
+        annotation: Any,
+        globalsn: dict[str, Any],
+        localsn: dict[str, Any],
+    ) -> Any:
+    """    Evaluate a possibly stringized annotation, using the globals and locals
+    dictionary of the scope the annotation was declared.
+
+    :param annotation: type annotation to evaluate.
+    :param globalsn: globals dictionary used to look up symbol names.
+    :param localsn: locals dictionary used to look up symbol names.
+    :return: the resolved annotation.
+    """
     if isinstance(annotation, str):
         return eval(annotation, globalsn, localsn)
     else:
@@ -265,20 +281,27 @@ class Formatted:
             if issubclass(key, format_type):
                 fmt = key.format
             else:
-                raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
+                raise TypeError(
+                    f'Formatted key must be a format_type, got {key!r}.'
+                )
         else:
-            # Overridden _types, get from that dictionary
+            # Overridden _types, get from that set
             if key not in cls._types:
-                raise TypeError(f'Formatted key must be one of the allowed types of {cls.__name__}.')
+                raise TypeError(
+                    'Formatted key must be one of the allowed types of '
+                    f'{cls.__name__}.'
+                )
             elif issubclass(key, format_type):
                 fmt = key.format
             else:
-                raise TypeError(f'Formatted option {key!r} must be a format type.')
+                raise TypeError(
+                    f'Formatted key must be a format_type, got {key!r}.'
+                )
         # Create the subclass
         class new_cls(cls, format_type):
             format: ClassVar[str] = fmt
             apply_on_load: ClassVar[bool] = True
-        new_cls.__qualname__ = f'{cls.__qualname__}[{key}]'
+        new_cls.__qualname__ = f'{cls.__qualname__}[{key.__name__}]'
         return new_cls
 
 
@@ -290,6 +313,7 @@ class StructuredMeta(type):
         NOTE: this only applies to attributes detected as associated with the
         struct format string, so this will not work if the class has other
         (private) members.
+        TODO: Fix this to work with private members.
     :type: slots: bool
     :param byte_order: Allows for adding a byte order specifier to the format
         string for this class.
