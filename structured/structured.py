@@ -115,7 +115,7 @@ def compute_format(
         byte_order: ByteOrder = ByteOrder.DEFAULT,
         globals: dict = {},
         locals: dict = {},
-    ) -> tuple[struct.Struct, dict[str, format_type | None]]:
+    ) -> tuple[struct.Struct, dict[str, Optional[format_type]]]:
     """Create a struct.Struct object and matching attribute names from a
     type hints dictionary.  Ignores private members (those beginning with '_').
 
@@ -128,7 +128,7 @@ def compute_format(
         as the attribute names to pair the values with.
     """
     fmts: list[str] = [byte_order.value]
-    attr_actions: dict[str, format_type | None] = {}
+    attr_actions: dict[str, Optional[format_type]] = {}
     for varname, vartype in typehints.items():
         vartype = eval_annotation(vartype, globals, locals)
         if is_classvar(vartype):
@@ -421,7 +421,7 @@ class Structured(metaclass=StructuredMeta, slots=True):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
     struct: ClassVar[struct.Struct]
-    _attr_actions: ClassVar[dict[str, format_type | None]]
+    _attr_actions: ClassVar[dict[str, Optional[format_type]]]
 
     def _set(self, values: Iterable[Any]) -> None:
         """Assigns class members' values.
