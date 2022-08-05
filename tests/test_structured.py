@@ -105,13 +105,6 @@ class TestStructured:
             b: int8
         assert Derived2.struct.format == ByteOrder.LE.value + '2b'
 
-    def test_slots(self) -> None:
-        class Base(Structured, slots=True):
-            a: int8
-            b: int16
-            _: pad[4]
-        assert tuple(Base._attr_actions.keys()) == Base.__slots__
-
     def test_pack_unpack(self) -> None:
         class Base(Structured):
             a: int8
@@ -190,7 +183,7 @@ class TestFormatted:
         assert MutableType[int16].format == int16.format
         assert MutableType[int16].apply_on_load
 
-        class Base(Structured, slots=True):
+        class Base(Structured):
             a: MutableType[int16]
             b: MutableType[uint32]
 

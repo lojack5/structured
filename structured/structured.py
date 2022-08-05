@@ -306,12 +306,6 @@ class StructuredMeta(type):
     """Metaclass for Structured subclasses.  Handles computing the format string
     and determining assigned class attributes.  Accepts two metaclass arguments:
 
-    :param slots: Whether the class should use slots for the assigned attributes.
-        NOTE: this only applies to attributes detected as associated with the
-        struct format string, so this will not work if the class has other
-        (private) members.
-        TODO: Fix this to work with private members.
-    :type: slots: bool
     :param byte_order: Allows for adding a byte order specifier to the format
         string for this class.
     :type byte_order: ByteOrder
@@ -321,7 +315,6 @@ class StructuredMeta(type):
             typename: str,
             bases: tuple[type, ...],
             classdict: dict[str, Any],
-            slots: bool = False,
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
         ) -> type[Structured]:
@@ -349,11 +342,6 @@ class StructuredMeta(type):
                     f' {dupes}.'
                 )
             attr_actions = base_attr_actions.copy() | attr_actions
-        # Enable slots?
-        if slots:
-            classdict['__slots__'] = tuple(attr_actions.keys())
-            for attr in attr_actions:
-                classdict.pop(attr, None)
         # Setup class variables
         classdict['struct'] = st
         classdict['_attr_actions'] = attr_actions
@@ -438,9 +426,10 @@ class StructuredMeta(type):
         return byte_order, format
 
 
-class Structured(metaclass=StructuredMeta, slots=True):
+class Structured(metaclass=StructuredMeta):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
+    __slots__ = ()
     struct: ClassVar[struct.Struct]
     _attr_actions: ClassVar[dict[str, Optional[format_type]]]
 
