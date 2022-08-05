@@ -43,14 +43,15 @@ class TestStructured:
             i: char
             j: pascal[2]
             k: pascal
+            l: bool8
 
             _private_member: int
 
             def method(self):
                 return 'foo'
 
-        assert ''.join(Base._attr_actions.keys()) == 'aAbBcCdDefghijk'
-        assert Base.struct.format == '3xbBhHiIqQefd2ss2pp'
+        assert ''.join(Base._attr_actions.keys()) == 'aAbBcCdDefghijkl'
+        assert Base.struct.format == '3xbBhHiIqQefd2ss2pp?'
 
         with pytest.raises(TypeError):
             class Base2(Structured):

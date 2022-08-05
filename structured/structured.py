@@ -7,6 +7,7 @@ __version__ = '1.0'
 __all__ = [
     'Structured', 'Formatted',
     'ByteOrder', 'ByteOrderMode',
+    'bool8',
     'int8', 'uint8',
     'int16', 'uint16',
     'int32', 'uint32',
@@ -165,6 +166,11 @@ class pad(counted):
     Padding bytes are discarded when read, and are written zeroed out.
     """
     format: ClassVar[str] = 'x'
+
+
+class bool8(int, format_type):
+    format: ClassVar[str] = '?'
+
 
 class int8(int, format_type):
     """8-bit signed integer."""
