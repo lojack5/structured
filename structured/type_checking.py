@@ -1,11 +1,22 @@
 import sys
 import typing
-from typing import Union
+from typing import Union, Protocol, runtime_checkable
 
 if sys.version_info < (3, 10):
     from typing_extensions import TypeAlias
 else:
     from typing import TypeAlias
+
+
+@runtime_checkable
+class SupportsRead(Protocol):
+    def read(self, size: int | None = ...) -> bytes: ...
+
+
+@runtime_checkable
+class SupportsWrite(Protocol):
+    def write(self, data: bytes) -> int: ...
+
 
 if typing.TYPE_CHECKING:
     import array

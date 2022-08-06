@@ -397,7 +397,12 @@ class Structured(metaclass=StructuredMeta):
         """
         self._set(self.struct.unpack(stream))
 
-    def unpack_read(self, readable) -> None:
+    def unpack_read(self, readable: SupportsRead) -> None:
+        """Read data from a file-like object and unpack it into values, assigned
+        to this class's attributes.
+
+        :param readable: readable file-like object.
+        """
         self.unpack(readable.read(self.struct.size))
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -413,6 +418,14 @@ class Structured(metaclass=StructuredMeta):
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
         return self.struct.pack(*self._get())
+
+    def pack_write(self, writable: SupportsWrite) -> None:
+        """Pack the class's values according to the format string, then write
+        the result to a file-like object.
+
+        :param writable: writable file-like object.
+        """
+        writable.write(self.pack())
 
     def pack_into(self, buffer: WriteableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the

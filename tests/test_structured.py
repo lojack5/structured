@@ -123,6 +123,16 @@ class TestStructured:
             b.unpack_read(stream)
         assert b.a == 42
 
+    def test_pack_write(self) -> None:
+        class Base(Structured):
+            a: int8
+        b = Base()
+        b.a = 42
+        data = b.pack()
+        with io.BytesIO() as stream:
+            b.pack_write(stream)
+            assert data == stream.getvalue()
+
     def test_pack_unpack(self) -> None:
         class Base(Structured):
             a: int8
