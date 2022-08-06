@@ -209,7 +209,7 @@ class TestFormatted:
                 self._value = -self._value
 
         assert MutableType[int16].format == int16.format
-        assert MutableType[int16].apply_on_load
+        assert MutableType[int16].unpack_action is MutableType[int16]
 
         class Base(Structured):
             a: MutableType[int16]
@@ -228,12 +228,34 @@ class TestFormatted:
         b.a.negate()
         assert int(b.a) == -11
 
+    def test_custom_action(self) -> None:
+        class MutableType(Formatted):
+            _wrapped: int
+
+            def __init__(self, not_an_int, value: int):
+                self._wrapped = value
+
+            def __index__(self) -> int:
+                return self._wrapped
+
+            @classmethod
+            def from_int(cls, value: int):
+                return cls(None, value)
+
+            unpack_action = from_int
+        class Base(Structured):
+            a: MutableType[int8]
+        b = Base()
+        data = Base.struct.pack(42)
+        b.unpack(data)
+        assert isinstance(b.a, MutableType)
+        assert int(b.a) == 42
 
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):
             _types = {int8, int16}
         assert MutableType[int8].format == int8.format
-        assert MutableType[int8].apply_on_load
+        assert MutableType[int8].unpack_action is MutableType[int8]
 
     def test_errors(self) -> None:
         class Error1(Formatted):

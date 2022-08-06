@@ -111,6 +111,23 @@ class MyError(Structured):
 >> TypeError
 ```
 
+By default, a `Formatted` subclass uses the class's `__init__` to create new instances when unpacking.  If you need more flexibility, you can assign the class attribute `unpack_action` to a callable taking one argument (the result of the unpack) and returning the new instance:
+```python
+class MyWeirdInt(Formatted):
+    def __init__(self, note: str, value: int):
+      self._note = note
+      self._value = value
+
+    def __index__(self) -> int:
+      return self._value
+
+    @classmethod
+    def from_unpack(cls, value: int):
+      return cls('unpacked', value)
+
+    unpack_action = from_unpack
+```
+
 As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.
 
 ### Extending

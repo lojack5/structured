@@ -22,12 +22,18 @@ from functools import cache, reduce
 import re
 import struct
 from enum import Enum
-from typing import Any, ClassVar, Iterable, Optional, TypeVar, get_origin, get_type_hints
+from typing import Any, Callable, ClassVar, Iterable, Optional, TypeVar, get_origin, get_type_hints
 
 from .type_checking import *
 
 
 _T = TypeVar('_T')
+_CFormatted = TypeVar('_CFormatted', bound='Formatted')
+
+
+def noop_action(x: _T) -> _T:
+    """Do nothing."""
+    return x
 
 
 class ByteOrder(Enum):
@@ -54,7 +60,7 @@ class ByteOrderMode(Enum):
 class format_type:
     """Base class for annotating types in a Structured subclass."""
     format: ClassVar[str] = ''
-    apply_on_load: ClassVar[bool] = False
+    unpack_action: ClassVar[Callable] = noop_action
 
 
 def is_classvar(annotation: Any) -> bool:
@@ -103,10 +109,6 @@ def fold_overlaps(format1: str, format2: str) -> str:
     return format
 
 
-def noop_action(x: _T) -> _T:
-    """Do nothing."""
-    return x
-
 def compute_format(
         typehints: dict[str, Any],
     ) -> tuple[str, dict[str, Optional[format_type]]]:
@@ -126,8 +128,7 @@ def compute_format(
         elif issubclass(vartype, format_type):
             fmts.append(vartype.format)
             if not issubclass(vartype, pad):
-                action = vartype if vartype.apply_on_load else noop_action
-                attr_actions[varname] = action
+                attr_actions[varname] = vartype.unpack_action
     return reduce(fold_overlaps, fmts), attr_actions
 
 
@@ -239,7 +240,7 @@ class Formatted:
 
     @classmethod    # Need to remark as classmethod since we're caching
     @cache
-    def __class_getitem__(cls, key: type) -> type[format_type]:
+    def __class_getitem__(cls: type[_CFormatted], key: type) -> type[format_type]:
         if cls._types is Formatted._types:
             # Default, just allow any format type
             if issubclass(key, format_type):
@@ -264,7 +265,11 @@ class Formatted:
         # Create the subclass
         class new_cls(cls, format_type):
             format: ClassVar[str] = fmt
-            apply_on_load: ClassVar[bool] = True
+            unpack_action: ClassVar[Callable]
+        if (action := getattr(cls, 'unpack_action', None)) is not None:
+            new_cls.unpack_action = action
+        else:
+            new_cls.unpack_action = new_cls
         new_cls.__qualname__ = f'{cls.__qualname__}[{key.__name__}]'
         return new_cls
 
@@ -372,7 +377,7 @@ class Structured(metaclass=StructuredMeta):
     struct module."""
     __slots__ = ()
     struct: ClassVar[struct.Struct]
-    _attr_actions: ClassVar[dict[str, Optional[format_type]]]
+    _attr_actions: ClassVar[dict[str, Callable]]
 
     def _set(self, values: Iterable[Any]) -> None:
         """Assigns class members' values.
