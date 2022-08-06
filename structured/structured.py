@@ -74,7 +74,7 @@ def _struct(format: str) -> struct.Struct:
     return struct.Struct(format)
 
 
-_reOverlap = re.compile(r'(.*?)(\d+)\D')
+_reOverlap = re.compile(r'(.*?)(\d+)\D$')
 def fold_overlaps(format1: str, format2: str) -> str:
     """Combines two format strings into one, combining common types into counted
     versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain

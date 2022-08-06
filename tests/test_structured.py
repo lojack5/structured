@@ -255,3 +255,4 @@ def test_extract_byte_order() -> None:
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
     assert structured.fold_overlaps('b', '') == 'b'
+    assert structured.fold_overlaps('4sI', 'I') == '4s2I'
