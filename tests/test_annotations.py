@@ -5,11 +5,11 @@ from typing import ClassVar
 from structured import *
 
 
-class A: pass
-
-
 def test_eval_annotation() -> None:
-    # Prior versions of eval_annotation would fail to find A
+    # Prior versions of the code would fail to evaluate `ClassVar[A]`
     class Base(Structured):
         a: ClassVar[A]
         b: int8
+
+
+class A: pass

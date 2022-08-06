@@ -22,7 +22,7 @@ from functools import cache, reduce
 import re
 import struct
 from enum import Enum
-from typing import Any, ClassVar, Iterable, Optional, TypeVar, get_origin
+from typing import Any, ClassVar, Iterable, Optional, TypeVar, get_origin, get_type_hints
 
 from .type_checking import *
 
@@ -108,29 +108,19 @@ def noop_action(x: _T) -> _T:
     return x
 
 def compute_format(
-        classname: str,
         typehints: dict[str, Any],
-        byte_order: ByteOrder = ByteOrder.DEFAULT,
-        globals: dict = {},
-        locals: dict = {},
-    ) -> tuple[struct.Struct, dict[str, Optional[format_type]]]:
-    """Create a struct.Struct object and matching attribute names and actions
-    from a type hints-like dictionary.  Ignores private members (those beginning
-    with '_').
+    ) -> tuple[str, dict[str, Optional[format_type]]]:
+    """Compute a format string and matching attribute names and actions from a
+    typehints-like dictionary.
 
-    :param classname: Class name for use in error messages.
-    :param typehints: Mapping of attribute names to type annotations.  Can be
-        retrieved either from typing.get_type_hints or cls.__annotations__.
-    :param byte_order: Any byte order specifiers to add to the format string.
-    :raises TypeError: If any annotations are not a subclass of format_type.
-    :return: A struct.Struct instance for packing and unpacking data, as well
-        as the attribute names mapped to any actions needed to apply to them
-        on unpacking.
+    :param typehints: Mapping of attribute names to type annotations.  Must be
+        fully evaluated type hints, not stringized.
+    :return: A format string for use with `struct`, as well as a mapping of
+        attribute names to any actions needed to apply to them on unpacking.
     """
-    fmts: list[str] = [byte_order.value]
+    fmts: list[str] = ['']
     attr_actions: dict[str, Optional[format_type]] = {}
     for varname, vartype in typehints.items():
-        vartype = eval_annotation(vartype, globals, locals)
         if is_classvar(vartype):
             continue
         elif issubclass(vartype, format_type):
@@ -138,11 +128,7 @@ def compute_format(
             if not issubclass(vartype, pad):
                 action = vartype if vartype.apply_on_load else noop_action
                 attr_actions[varname] = action
-        elif not varname[0] == '_':
-            raise TypeError(
-                f'Public member {classname}.{varname} must be of the provided '
-                'structured.* types.')
-    return _struct(reduce(fold_overlaps, fmts)), attr_actions
+    return reduce(fold_overlaps, fmts), attr_actions
 
 
 class counted(format_type):
@@ -242,25 +228,6 @@ class pascal(str, counted):
     format: ClassVar[str] = 'p'
 
 
-def eval_annotation(
-        annotation: Any,
-        globalsn: dict[str, Any],
-        localsn: dict[str, Any],
-    ) -> Any:
-    """    Evaluate a possibly stringized annotation, using the globals and locals
-    dictionary of the scope the annotation was declared.
-
-    :param annotation: type annotation to evaluate.
-    :param globalsn: globals dictionary used to look up symbol names.
-    :param localsn: locals dictionary used to look up symbol names.
-    :return: the resolved annotation.
-    """
-    if isinstance(annotation, str):
-        return eval(annotation, globalsn, localsn)
-    else:
-        return annotation
-
-
 class Formatted:
     """Class used for creating new format types.  Provides a class getitem
     to select the format specifier, by grabbing from one of the provided format
@@ -318,32 +285,19 @@ class StructuredMeta(type):
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
         ) -> type[Structured]:
-        module = sys.modules.get(classdict['__module__'], None)
-        globalsn = getattr(module, '__dict__', {})
-        st, attr_actions = compute_format(
-            typename, classdict.get('__annotations__', {}), byte_order,
-            globalsn, classdict,
-        )
+        # Hacky way to leverage typing.get_type_hints to evaluate stringized
+        # annotations, even though the class isn't created yet.  Side benifit
+        # is this will also pull in type hints from all base classes as well.
+        # This allows for overriding of base class types.
+        temp_cls = super().__new__(cls, typename, bases, classdict)
+        typehints = get_type_hints(temp_cls)
+        del temp_cls
+        fmt, attr_actions = compute_format(typehints)
         # See if we're extending a Structured base class
         structured_base = cls.find_structured_superclass(bases)
-        if structured_base:
-            base_struct = structured_base.struct
-            base_attr_actions = structured_base._attr_actions
-            st = cls.merge_formats(
-                structured_base.__name__, base_struct,
-                typename, st,
-                byte_order_mode,
-            )
-            # Check for duplicate attributes
-            if dupes := ', '.join(set(attr_actions) & set(base_attr_actions)):
-                raise SyntaxError(
-                    f'Duplicate structure attributes in class {typename} '
-                    f'already defined in base class {structured_base.__name__}:'
-                    f' {dupes}.'
-                )
-            attr_actions = base_attr_actions.copy() | attr_actions
+        cls.check_byte_order_conflict(structured_base, typename, byte_order, byte_order_mode)
         # Setup class variables
-        classdict['struct'] = st
+        classdict['struct'] = _struct(byte_order.value + fmt)
         classdict['_attr_actions'] = attr_actions
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
@@ -366,45 +320,32 @@ class StructuredMeta(type):
         return None
 
     @classmethod
-    def merge_formats(
+    def check_byte_order_conflict(
         cls,
-        base_name: str,
-        base_struct: struct.Struct,
+        base: Optional[type[Structured]],
         derived_name: str,
-        derived_struct: struct.Struct,
-        mode: ByteOrderMode,
-    ) -> struct.Struct:
-        """Given two classes' struct instances, combine their structure format
-        strings.  If the two strings have differing byte order modes, behavior
-        is determined by `mode`: in STRICT, both must match, in OVERRIDE, the
-        derived class's byte order mode is used.  Overlapping format specifiers
-        are folded, i.e.: 'h10q' + 'qhi' -> 'h11qhi'.
+        derived_byte_order: ByteOrder,
+        byte_order_mode: ByteOrderMode,
+    ) -> None:
+        """Check for byte order conflicts between a base class and derived
+        class.
 
-        :param base_name: Base class's name, used for error messages.
-        :param base_struct: Base class's struct instance.
-        :param derived_name: Derived class's name, used for error messages.
-        :param derived_struct: Derived class's struct instance.
-        :param mode: How to handle conflicts in byte order mode.
-        :raises ValueError: If mode is STRICT and byte_order markers differ.
-        :return: A new struct.Struct with the combined format.
+        :param base: base Structured class (if any) for this class.
+        :param derived_name: derived class name, used for error messages.
+        :param derived_byte_order: derived class ByteOrder specifier.
+        :param byte_order_mode: derived class ByteOrderMode.
+        :raises ValueError: If a conflict is present.
         """
-        # Extract byte orders
-        base_byte_order, base_format = cls.extract_byte_order(
-            base_struct.format
-        )
-        derived_byte_order, derived_format = cls.extract_byte_order(
-            derived_struct.format
-        )
-        if (mode is ByteOrderMode.STRICT and
-            base_byte_order is not derived_byte_order):
-            raise ValueError(
-                'Incompatable byte order specifications between class '
-                f'{derived_name} ({derived_byte_order.name}) and base class '
-                f'{base_name} ({base_byte_order.name}). If this is intentional,'
-                ' use `byte_order_mode=OVERRIDE`.'
-            )
-        format = fold_overlaps(base_format, derived_format)
-        return _struct(derived_byte_order.value + format)
+        if base is not None:
+            base_byte_order, _ = cls.extract_byte_order(base.struct.format)
+            if (byte_order_mode is ByteOrderMode.STRICT and
+                base_byte_order is not derived_byte_order):
+                raise ValueError(
+                    'Incompatable byte order specifications between class '
+                    f'{derived_name} ({derived_byte_order.name}) and base class'
+                    f' {base.__name__} ({base_byte_order.name}). If this is '
+                    'intentional, use `byte_order_mode=OVERRIDE`.'
+                )
 
 
     @staticmethod
@@ -455,6 +396,9 @@ class Structured(metaclass=StructuredMeta):
         :param stream: `.read`able stream to draw data from.
         """
         self._set(self.struct.unpack(stream))
+
+    def unpack_read(self, readable) -> None:
+        self.unpack(readable.read(self.struct.size))
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
         """Unpack values from a `buffer` implementing the buffer protocol

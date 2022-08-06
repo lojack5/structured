@@ -1,5 +1,6 @@
 __author__ = 'Lojack'
 
+import io
 import pytest
 
 import structured
@@ -45,17 +46,13 @@ class TestStructured:
             k: pascal
             l: bool8
 
-            _private_member: int
+            other_member: int
 
             def method(self):
                 return 'foo'
 
         assert ''.join(Base._attr_actions.keys()) == 'aAbBcCdDefghijkl'
         assert Base.struct.format == '3xbBhHiIqQefd2ss2pp?'
-
-        with pytest.raises(TypeError):
-            class Base2(Structured):
-                a: bool
 
     def test_extending(self) -> None:
         # Test non-string types are folded in the format string
@@ -87,13 +84,23 @@ class TestStructured:
             b: pascal[3]
         assert Derived3.struct.format == '10p3p'
 
-    def test_duplicate_names(self) -> None:
+    def test_override_types(self) -> None:
         class Base(Structured):
             a: int8
             b: int16
-        with pytest.raises(SyntaxError):
-            class Derived(Base):
-                a: int16
+        class Derived(Base):
+            a: int16
+        assert Derived.struct.format == '2h'
+
+        class Base(Structured):
+            a: int8
+            b: int8
+            c: int8
+        class Derived(Base):
+            b: None
+        assert Derived.struct.format == '2b'
+        assert tuple(Derived._attr_actions.keys()) == ('a', 'c')
+
 
     def test_mismatched_byte_order(self) -> None:
         class Base(Structured):
@@ -104,6 +111,17 @@ class TestStructured:
         class Derived2(Base, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):
             b: int8
         assert Derived2.struct.format == ByteOrder.LE.value + '2b'
+
+    def test_unpack_read(self) -> None:
+        class Base(Structured):
+            a: int8
+        b = Base()
+        b.a = 42
+        data = b.pack()
+        with io.BytesIO(data) as stream:
+            b.a = 0
+            b.unpack_read(stream)
+        assert b.a == 42
 
     def test_pack_unpack(self) -> None:
         class Base(Structured):
@@ -228,6 +246,10 @@ def test_extract_byte_order() -> None:
     byte_order, format = structured.StructuredMeta.extract_byte_order('')
     assert byte_order is ByteOrder.DEFAULT
     assert format == ''
+
+    byte_order, format = structured.StructuredMeta.extract_byte_order('<b')
+    assert byte_order is ByteOrder.LE
+    assert format == 'b'
 
 
 def test_fold_overlaps() -> None:
