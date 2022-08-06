@@ -10,7 +10,7 @@ else:
 
 @runtime_checkable
 class SupportsRead(Protocol):
-    def read(self, size: int | None = ...) -> bytes: ...
+    def read(self, size: Union[int, None] = ...) -> bytes: ...
 
 
 @runtime_checkable
