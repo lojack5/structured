@@ -29,11 +29,6 @@ from .type_checking import (
 )
 
 
-def noop_action(x: _T) -> _T:
-    """Do nothing."""
-    return x
-
-
 class ByteOrder(Enum):
     """Byte order specifiers for passing to the struct module.  See the stdlib
     documentation for details on what each means.
@@ -55,71 +50,15 @@ class ByteOrderMode(Enum):
     STRICT = 'strict'
 
 
+def noop_action(x: _T) -> _T:
+    """Do nothing."""
+    return x
+
+
 class format_type:
     """Base class for annotating types in a Structured subclass."""
     format: ClassVar[str] = ''
     unpack_action: ClassVar[Callable] = noop_action
-
-
-@cache
-def _struct(format: str) -> struct.Struct:
-    """Cached struct.Struct creation.
-
-    :param format: struct packing format string.
-    """
-    return struct.Struct(format)
-
-
-_reOverlap = re.compile(r'(.*?)(\d+)\D$')
-def fold_overlaps(format1: str, format2: str) -> str:
-    """Combines two format strings into one, combining common types into counted
-    versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
-    byte order specifiers.
-
-    :param format1: First format string to combine, may be empty.
-    :param format2: Second format string to combine, may be empty.
-    :return: The combined format string.
-    """
-    if not format1:
-        return format2
-    elif not format2:
-        return format1
-    if ((overlap := format1[-1]) == format2[0] and
-         overlap not in ('s', 'p')):
-        if match := _reOverlap.match(format1):
-            prelude, count = match.groups()
-            count = int(count)
-        else:
-            prelude = format1[:-1]
-            count = 1
-        count += 1
-        format = f'{prelude}{count}{overlap}{format2[1:]}'
-    else:
-        format = format1 + format2
-    return format
-
-
-def compute_format(
-        typehints: dict[str, Any],
-    ) -> tuple[str, dict[str, Optional[format_type]]]:
-    """Compute a format string and matching attribute names and actions from a
-    typehints-like dictionary.
-
-    :param typehints: Mapping of attribute names to type annotations.  Must be
-        fully evaluated type hints, not stringized.
-    :return: A format string for use with `struct`, as well as a mapping of
-        attribute names to any actions needed to apply to them on unpacking.
-    """
-    fmts: list[str] = ['']
-    attr_actions: dict[str, Optional[format_type]] = {}
-    for varname, vartype in typehints.items():
-        if is_classvar(vartype):
-            continue
-        elif issubclass(vartype, format_type):
-            fmts.append(vartype.format)
-            if not issubclass(vartype, pad):
-                attr_actions[varname] = vartype.unpack_action
-    return reduce(fold_overlaps, fmts), attr_actions
 
 
 class counted(format_type):
@@ -272,6 +211,8 @@ class StructuredMeta(type):
         string for this class.
     :type byte_order: ByteOrder
     """
+    _reOverlap: ClassVar[re.Pattern[str]] = re.compile(r'(.*?)(\d+)\D$')
+
     def __new__(
             cls: type[StructuredMeta],
             typename: str,
@@ -288,7 +229,7 @@ class StructuredMeta(type):
         qualname = temp_cls.__qualname__
         typehints = get_type_hints(temp_cls)
         del temp_cls
-        fmt, attr_actions = compute_format(typehints)
+        fmt, attr_actions = cls.compute_format(typehints)
         # See if we're extending a Structured base class
         structured_base = cls.find_structured_superclass(bases)
         cls.check_byte_order_conflict(
@@ -298,12 +239,21 @@ class StructuredMeta(type):
             byte_order_mode
         )
         # Setup class variables
-        classdict['struct'] = st = _struct(byte_order.value + fmt)
+        classdict['struct'] = st = cls._struct(byte_order.value + fmt)
         classdict['__format_attrs__'] = tuple(attr_actions.keys())
         cls.gen_packers(qualname, classdict, st, attr_actions)
         cls.gen_unpackers(qualname, classdict, st, attr_actions)
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
+
+    @staticmethod
+    @cache
+    def _struct(format: str) -> struct.Struct:
+        """Cached struct.Struct creation.
+
+        :param format: struct packing format string.
+        """
+        return struct.Struct(format)
 
     @staticmethod
     def find_structured_superclass(
@@ -321,6 +271,58 @@ class StructuredMeta(type):
                 if issubclass(base, Structured) and base is not Structured:
                     return base
         return None
+
+    @classmethod
+    def compute_format(
+            cls,
+            typehints: dict[str, Any],
+        ) -> tuple[str, dict[str, Optional[format_type]]]:
+        """Compute a format string and matching attribute names and actions from a
+        typehints-like dictionary.
+
+        :param typehints: Mapping of attribute names to type annotations.  Must be
+            fully evaluated type hints, not stringized.
+        :return: A format string for use with `struct`, as well as a mapping of
+            attribute names to any actions needed to apply to them on unpacking.
+        """
+        fmts: list[str] = ['']
+        attr_actions: dict[str, Optional[format_type]] = {}
+        for varname, vartype in typehints.items():
+            if is_classvar(vartype):
+                continue
+            elif issubclass(vartype, format_type):
+                fmts.append(vartype.format)
+                if not issubclass(vartype, pad):
+                    attr_actions[varname] = vartype.unpack_action
+        return reduce(cls.fold_overlaps, fmts), attr_actions
+
+    @classmethod
+    def fold_overlaps(cls, format1: str, format2: str) -> str:
+        """Combines two format strings into one, combining common types into counted
+        versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
+        byte order specifiers.
+
+        :param format1: First format string to combine, may be empty.
+        :param format2: Second format string to combine, may be empty.
+        :return: The combined format string.
+        """
+        if not format1:
+            return format2
+        elif not format2:
+            return format1
+        if ((overlap := format1[-1]) == format2[0] and
+            overlap not in ('s', 'p')):
+            if match := cls._reOverlap.match(format1):
+                prelude, count = match.groups()
+                count = int(count)
+            else:
+                prelude = format1[:-1]
+                count = 1
+            count += 1
+            format = f'{prelude}{count}{overlap}{format2[1:]}'
+        else:
+            format = format1 + format2
+        return format
 
     @classmethod
     def check_byte_order_conflict(
