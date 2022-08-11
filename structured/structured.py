@@ -226,7 +226,6 @@ class StructuredMeta(type):
         # is this will also pull in type hints from all base classes as well.
         # This allows for overriding of base class types.
         temp_cls = super().__new__(cls, typename, bases, classdict)
-        qualname = temp_cls.__qualname__
         typehints = get_type_hints(temp_cls)
         del temp_cls
         fmt, attr_actions = cls.compute_format(typehints)
@@ -241,8 +240,8 @@ class StructuredMeta(type):
         # Setup class variables
         classdict['struct'] = st = cls._struct(byte_order.value + fmt)
         classdict['__format_attrs__'] = tuple(attr_actions.keys())
-        cls.gen_packers(qualname, classdict, st, attr_actions)
-        cls.gen_unpackers(qualname, classdict, st, attr_actions)
+        cls.gen_packers(classdict, st, attr_actions)
+        cls.gen_unpackers(classdict, st, attr_actions)
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
 
@@ -373,7 +372,6 @@ class StructuredMeta(type):
 
     @staticmethod
     def gen_packers(
-            cls_qualname: str,
             classdict: dict[str, Any],
             struct: struct.Struct,
             attr_actions: dict[str, Callable[[Any], Any]],
@@ -415,16 +413,14 @@ class StructuredMeta(type):
             :param offset: position in the buffer to start writing data to.
             """
             packer_into(buffer, offset, *(getattr(self, attr) for attr in attrs))
-        pack.__qualname__ = cls_qualname + '.pack'
-        pack_write.__qualname__ = cls_qualname + '.pack_write'
-        pack_into.__qualname__ = cls_qualname = '.pack_into'
-        classdict['pack'] = pack
-        classdict['pack_write'] = pack_write
-        classdict['pack_into'] = pack_into
+        # Only assign methods that don't have an implementation
+        cls_qualname = classdict['__qualname__']
+        for method in (pack, pack_write, pack_into):
+            method.__qualname__ = cls_qualname + '.' + method.__name__
+            classdict.setdefault(method.__name__, method)
 
     @staticmethod
     def gen_unpackers(
-            cls_qualname: str,
             classdict: dict[str, Any],
             struct: struct.Struct,
             attr_actions: dict[str, Callable[[Any], Any]],
@@ -476,21 +472,18 @@ class StructuredMeta(type):
             def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
                 for attr, value in zip(attrs, unpacker_from(buffer, offset)):
                     setattr(self, attr, value)
-        unpack.__qualname__ = cls_qualname + '.unpack'
         unpack.__doc__ = """
             Unpack values from `stream` according to this class's format string,
             and assign them to their associated class members.
 
             :param stream: `.read`able stream to draw data from.
             """
-        unpack_read.__qualname__ = cls_qualname + '.unpack_read'
         unpack_read.__doc__ = """
             Read data from a file-like object and unpack it into values, assigned
             to this class's attributes.
 
             :param readable: readable file-like object.
             """
-        unpack_from.__qualname__ = cls_qualname + '.unpack_from'
         unpack_from.__doc__ = """
             Unpack values from a `buffer` implementing the buffer protocol
             starting at index `offset`, and assigne them to their associated class
@@ -499,9 +492,11 @@ class StructuredMeta(type):
             :param buffer: buffer to unpack from.
             :param offset: position in the buffer to start from.
             """
-        classdict['unpack'] = unpack
-        classdict['unpack_read'] = unpack_read
-        classdict['unpack_from'] = unpack_from
+        # Only set the methods if the subclass did not provide an override.
+        cls_qualname = classdict['__qualname__']
+        for method in (unpack, unpack_read, unpack_from):
+            method.__qualname__ = cls_qualname + '.' + method.__name__
+            classdict.setdefault(method.__name__, method)
 
 
 class Structured(metaclass=StructuredMeta):
@@ -535,6 +530,7 @@ class Structured(metaclass=StructuredMeta):
         """
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
+        return b''
     def pack_write(self, writable: SupportsWrite) -> None:
         """Pack the class's values according to the format string, then write
         the result to a file-like object.
