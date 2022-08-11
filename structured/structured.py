@@ -22,7 +22,9 @@ from functools import cache, reduce
 import re
 import struct
 from enum import Enum
-from typing import Any, Callable, ClassVar, Iterable, Optional, TypeVar, get_origin, get_type_hints
+from typing import (
+    Any, Callable, ClassVar, Optional, TypeVar, get_origin, get_type_hints,
+)
 
 from .type_checking import *
 
@@ -295,15 +297,23 @@ class StructuredMeta(type):
         # is this will also pull in type hints from all base classes as well.
         # This allows for overriding of base class types.
         temp_cls = super().__new__(cls, typename, bases, classdict)
+        qualname = temp_cls.__qualname__
         typehints = get_type_hints(temp_cls)
         del temp_cls
         fmt, attr_actions = compute_format(typehints)
         # See if we're extending a Structured base class
         structured_base = cls.find_structured_superclass(bases)
-        cls.check_byte_order_conflict(structured_base, typename, byte_order, byte_order_mode)
+        cls.check_byte_order_conflict(
+            structured_base,
+            typename,
+            byte_order,
+            byte_order_mode
+        )
         # Setup class variables
-        classdict['struct'] = _struct(byte_order.value + fmt)
-        classdict['_attr_actions'] = attr_actions
+        classdict['struct'] = st = _struct(byte_order.value + fmt)
+        classdict['__format_attrs__'] = tuple(attr_actions.keys())
+        cls.gen_packers(qualname, classdict, st, attr_actions)
+        cls.gen_unpackers(qualname, classdict, st, attr_actions)
         # Create the class
         return super().__new__(cls, typename, bases, classdict)
 
@@ -371,45 +381,160 @@ class StructuredMeta(type):
             byte_order = ByteOrder.DEFAULT
         return byte_order, format
 
+    @staticmethod
+    def gen_packers(
+            cls_qualname: str,
+            classdict: dict[str, Any],
+            struct: struct.Struct,
+            attr_actions: dict[str, Callable[[Any], Any]],
+        ) -> tuple[
+            Callable[[Structured], bytes],
+            Callable[[Structured, SupportsWrite], None],
+            Callable[[Structured, WriteableBuffer, int], None],
+        ]:
+        """Create packing methods `pack`, `pack_write`, and `pack_into` for a
+        Structured class.  We do this in the metaclass for a performance boost
+        by bringing some items into local scope of the methods.
+
+        :param cls_qualname: Qualname for the class being created.  Used to set
+            the qualname for the generated methods.
+        :param classdict: Class dictionary for the created class.
+        :param struct: Struct object for the created class.
+        :param attr_actions: Mapping of attribute names to actions applied to
+            values once unpacked.
+        :return: The three generated packing methods.
+        """
+        packer = struct.pack
+        packer_into = struct.pack_into
+        attrs = tuple(attr_actions.keys())
+        def pack(self) -> bytes:
+            """Pack the class's values according to the format string."""
+            return packer(*(getattr(self, attr) for attr in attrs))
+        def pack_write(self, writable: SupportsWrite) -> None:
+            """Pack the class's values according to the format string, then write
+            the result to a file-like object.
+
+            :param writable: writable file-like object.
+            """
+            writable.write(packer(*(getattr(self, attr) for attr in attrs)))
+        def pack_into(self, buffer: WriteableBuffer, offset: int = 0) -> None:
+            """Pack the class's values according to the format string, pkacing the
+            result into `buffer` starting at position `offset`.
+
+            :param stream: buffer to pack into.
+            :param offset: position in the buffer to start writing data to.
+            """
+            packer_into(buffer, offset, *(getattr(self, attr) for attr in attrs))
+        pack.__qualname__ = cls_qualname + '.pack'
+        pack_write.__qualname__ = cls_qualname + '.pack_write'
+        pack_into.__qualname__ = cls_qualname = '.pack_into'
+        classdict['pack'] = pack
+        classdict['pack_write'] = pack_write
+        classdict['pack_into'] = pack_into
+
+    @staticmethod
+    def gen_unpackers(
+            cls_qualname: str,
+            classdict: dict[str, Any],
+            struct: struct.Struct,
+            attr_actions: dict[str, Callable[[Any], Any]],
+        ) -> tuple[
+            Callable[[Structured, ReadableBuffer], None],
+            Callable[[Structured, SupportsRead], None],
+            Callable[[Structured, ReadableBuffer, int], None],
+        ]:
+        """Create unpacking methods `unpack`, `unpack_write`, and `unpack_from`
+        for a Structured class.  We do this in the metaclass for a performance
+        boost by bringing some items into local scope of the methods.
+
+        :param cls_qualname: Qualname for the class being created.  Used to set
+            the qualname for the generated methods.
+        :param classdict: Class dictionary for the created class.
+        :param struct: Struct object for the created class.
+        :param attr_actions: Mapping of attribute names to actions applied to
+            values once unpacked.
+        :return: The three generated unpacking methods.
+        """
+        unpacker = struct.unpack
+        unpacker_from = struct.unpack_from
+        size = struct.size
+        custom_unpackers = any((action is not noop_action
+                                for action in attr_actions.values()))
+        if custom_unpackers:
+            attr_actions = tuple(attr_actions.items())
+            def unpack(self, buffer: ReadableBuffer) -> None:
+                for (attr, action), value in zip(attr_actions,
+                                                 unpacker(buffer)):
+                    setattr(self, attr, action(value))
+            def unpack_read(self, readable: SupportsRead) -> None:
+                for (attr, action), value in zip(attr_actions,
+                                                 unpacker(readable.read(size))):
+                    setattr(self, attr, action(value))
+            def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
+                for (attr, action), value in zip(attr_actions,
+                                                 unpacker_from(buffer, offset)):
+                    setattr(self, attr, action(value))
+        else:
+            # No custom unpackers, so we can optimize a little
+            attrs = tuple(attr_actions.keys())
+            def unpack(self, buffer: ReadableBuffer) -> None:
+                for attr, value in zip(attrs, unpacker(buffer)):
+                    setattr(self, attr, value)
+            def unpack_read(self, readable: SupportsRead) -> None:
+                for attr, value in zip(attrs, unpacker(readable.read(size))):
+                    setattr(self, attr, value)
+            def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
+                for attr, value in zip(attrs, unpacker_from(buffer, offset)):
+                    setattr(self, attr, value)
+        unpack.__qualname__ = cls_qualname + '.unpack'
+        unpack.__doc__ = """
+            Unpack values from `stream` according to this class's format string,
+            and assign them to their associated class members.
+
+            :param stream: `.read`able stream to draw data from.
+            """
+        unpack_read.__qualname__ = cls_qualname + '.unpack_read'
+        unpack_read.__doc__ = """
+            Read data from a file-like object and unpack it into values, assigned
+            to this class's attributes.
+
+            :param readable: readable file-like object.
+            """
+        unpack_from.__qualname__ = cls_qualname + '.unpack_from'
+        unpack_from.__doc__ = """
+            Unpack values from a `buffer` implementing the buffer protocol
+            starting at index `offset`, and assigne them to their associated class
+            members.
+
+            :param buffer: buffer to unpack from.
+            :param offset: position in the buffer to start from.
+            """
+        classdict['unpack'] = unpack
+        classdict['unpack_read'] = unpack_read
+        classdict['unpack_from'] = unpack_from
+
 
 class Structured(metaclass=StructuredMeta):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
     __slots__ = ()
     struct: ClassVar[struct.Struct]
-    _attr_actions: ClassVar[dict[str, Callable]]
+    __format_attrs__: ClassVar[dict[str, Callable]]
 
-    def _set(self, values: Iterable[Any]) -> None:
-        """Assigns class members' values.
-
-        :param values: Sequence of values in the same order as the attributes
-            they should be assigned to.  Attribute order is stored in _attrs.
-        """
-        for (attr, action), value in zip(self._attr_actions.items(), values):
-            setattr(self, attr, action(value))
-
-    def _get(self) -> Iterable[Any]:
-        """Create an iterable of values to pack with.  Attribute order these
-        values are retrived from is stored in _attrs.
-        """
-        return (getattr(self, attr) for attr in self._attr_actions)
-
+    # Method prototypes for type checkers, actual implementations are created
+    # by the metaclass.
     def unpack(self, stream: ReadableBuffer) -> None:
         """Unpack values from `stream` according to this class's format string,
         and assign them to their associated class members.
 
         :param stream: `.read`able stream to draw data from.
         """
-        self._set(self.struct.unpack(stream))
-
     def unpack_read(self, readable: SupportsRead) -> None:
         """Read data from a file-like object and unpack it into values, assigned
         to this class's attributes.
 
         :param readable: readable file-like object.
         """
-        self.unpack(readable.read(self.struct.size))
-
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
         """Unpack values from a `buffer` implementing the buffer protocol
         starting at index `offset`, and assigne them to their associated class
@@ -418,20 +543,14 @@ class Structured(metaclass=StructuredMeta):
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        self._set(self.struct.unpack_from(buffer, offset))
-
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self.struct.pack(*self._get())
-
     def pack_write(self, writable: SupportsWrite) -> None:
         """Pack the class's values according to the format string, then write
         the result to a file-like object.
 
         :param writable: writable file-like object.
         """
-        writable.write(self.pack())
-
     def pack_into(self, buffer: WriteableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
         result into `buffer` starting at position `offset`.
@@ -439,12 +558,11 @@ class Structured(metaclass=StructuredMeta):
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self.struct.pack_into(buffer, offset, *self._get())
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
         vals = ', '.join((
             f'{attr}={getattr(self, attr)}'
-            for attr in self._attr_actions
+            for attr in self.__format_attrs__
         ))
         return f'{type(self).__name__}({vals})'

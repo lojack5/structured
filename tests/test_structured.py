@@ -51,7 +51,7 @@ class TestStructured:
             def method(self):
                 return 'foo'
 
-        assert ''.join(Base._attr_actions.keys()) == 'aAbBcCdDefghijkl'
+        assert ''.join(Base.__format_attrs__) == 'aAbBcCdDefghijkl'
         assert Base.struct.format == '3xbBhHiIqQefd2ss2pp?'
 
     def test_extending(self) -> None:
@@ -99,7 +99,7 @@ class TestStructured:
         class Derived(Base):
             b: None
         assert Derived.struct.format == '2b'
-        assert tuple(Derived._attr_actions.keys()) == ('a', 'c')
+        assert tuple(Derived.__format_attrs__) == ('a', 'c')
 
 
     def test_mismatched_byte_order(self) -> None:
@@ -247,9 +247,16 @@ class TestFormatted:
             a: MutableType[int8]
         b = Base()
         data = Base.struct.pack(42)
-        b.unpack(data)
-        assert isinstance(b.a, MutableType)
-        assert int(b.a) == 42
+        for unpacker in (b.unpack, b.unpack_from):
+            b.a = 0
+            unpacker(data)
+            assert isinstance(b.a, MutableType)
+            assert int(b.a) == 42
+        with io.BytesIO(data) as ins:
+            b.a = 0
+            b.unpack_read(ins)
+            assert isinstance(b.a, MutableType)
+            assert int(b.a) == 42
 
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):

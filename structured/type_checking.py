@@ -2,6 +2,7 @@ import sys
 import typing
 from typing import Union, Protocol, runtime_checkable
 
+
 if sys.version_info < (3, 10):
     from typing_extensions import TypeAlias
 else:
