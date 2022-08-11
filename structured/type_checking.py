@@ -1,12 +1,25 @@
 import sys
 import typing
-from typing import Union, Protocol, runtime_checkable
-
+from typing import (
+    Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union,
+    get_origin, get_type_hints, runtime_checkable,
+)
 
 if sys.version_info < (3, 10):
     from typing_extensions import TypeAlias
 else:
     from typing import TypeAlias
+
+
+_T = TypeVar('_T')
+
+
+def is_classvar(annotation: Any) -> bool:
+    """Determine if a type annotations is for a class variable.
+
+    :param annotation: Fully resolved type annotation to test.
+    """
+    return get_origin(annotation) is ClassVar
 
 
 @runtime_checkable
@@ -33,15 +46,15 @@ if typing.TYPE_CHECKING:
     # Protocol for it (until PEP 688 is implemented). Instead we have to list
     # the most common stdlib buffer classes in a Union.
     if sys.version_info >= (3, 8):
-        WriteableBuffer: TypeAlias = Union[
+        WritableBuffer: TypeAlias = Union[
             bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData,
             pickle.PickleBuffer
         ]
     else:
-        WriteableBuffer: TypeAlias = Union[  # type: ignore
+        WritableBuffer: TypeAlias = Union[  # type: ignore
             bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData
         ]
-    ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WriteableBuffer]
+    ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WritableBuffer]
 else:
     WritableBuffer: TypeAlias = bytearray
     ReadableBuffer: TypeAlias = Union[bytes, bytearray]

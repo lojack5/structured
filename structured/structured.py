@@ -22,15 +22,11 @@ from functools import cache, reduce
 import re
 import struct
 from enum import Enum
-from typing import (
-    Any, Callable, ClassVar, Optional, TypeVar, get_origin, get_type_hints,
+
+from .type_checking import (
+    _T, Any, Callable, ClassVar, Optional, ReadableBuffer, SupportsRead,
+    SupportsWrite, WritableBuffer, get_type_hints, is_classvar,
 )
-
-from .type_checking import *
-
-
-_T = TypeVar('_T')
-_CFormatted = TypeVar('_CFormatted', bound='Formatted')
 
 
 def noop_action(x: _T) -> _T:
@@ -63,14 +59,6 @@ class format_type:
     """Base class for annotating types in a Structured subclass."""
     format: ClassVar[str] = ''
     unpack_action: ClassVar[Callable] = noop_action
-
-
-def is_classvar(annotation: Any) -> bool:
-    """Determine if a type annotations is for a class variable.
-
-    :param annotation: Fully resolved type annotation to test.
-    """
-    return get_origin(annotation) is ClassVar
 
 
 @cache
@@ -242,7 +230,7 @@ class Formatted:
 
     @classmethod    # Need to remark as classmethod since we're caching
     @cache
-    def __class_getitem__(cls: type[_CFormatted], key: type) -> type[format_type]:
+    def __class_getitem__(cls: type[Formatted], key: type) -> type[format_type]:
         if cls._types is Formatted._types:
             # Default, just allow any format type
             if issubclass(key, format_type):
@@ -267,7 +255,7 @@ class Formatted:
         # Create the subclass
         class new_cls(cls, format_type):
             format: ClassVar[str] = fmt
-            unpack_action: ClassVar[Callable]
+            unpack_action: ClassVar[Callable[[Any], Formatted]]
         if (action := getattr(cls, 'unpack_action', None)) is not None:
             new_cls.unpack_action = action
         else:
@@ -390,7 +378,7 @@ class StructuredMeta(type):
         ) -> tuple[
             Callable[[Structured], bytes],
             Callable[[Structured, SupportsWrite], None],
-            Callable[[Structured, WriteableBuffer, int], None],
+            Callable[[Structured, WritableBuffer, int], None],
         ]:
         """Create packing methods `pack`, `pack_write`, and `pack_into` for a
         Structured class.  We do this in the metaclass for a performance boost
@@ -417,7 +405,7 @@ class StructuredMeta(type):
             :param writable: writable file-like object.
             """
             writable.write(packer(*(getattr(self, attr) for attr in attrs)))
-        def pack_into(self, buffer: WriteableBuffer, offset: int = 0) -> None:
+        def pack_into(self, buffer: WritableBuffer, offset: int = 0) -> None:
             """Pack the class's values according to the format string, pkacing the
             result into `buffer` starting at position `offset`.
 
@@ -551,7 +539,7 @@ class Structured(metaclass=StructuredMeta):
 
         :param writable: writable file-like object.
         """
-    def pack_into(self, buffer: WriteableBuffer, offset: int = 0):
+    def pack_into(self, buffer: WritableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
         result into `buffer` starting at position `offset`.
 
