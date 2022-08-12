@@ -9,3 +9,36 @@ skip_covered = true
 [tool.pytest.ini_options]
 testpaths = ['tests']
 addopts = "--cov --cov-report term --cov-report=html --cov-report=xml"
+
+[build-system]
+requires = ['setuptools>=61.0']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'structured_classes'
+version = '1.0'
+authors = [
+    { name = 'lojack5' },
+]
+description = 'Annotated classes that pack and unpack C structures.'
+readme = 'README.md'
+license = { text = 'BSD 3-Clause' }
+requires-python = '>=3.9'
+dependencies = [
+    'typing_extensions==4.3.0; python_version < "3.10"',
+]
+classifiers = [
+    'Intended Audience :: Developers',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'License :: OSI Approved :: BSD License',
+    'Operating System :: OS Independent',
+    'Typing :: Typed',
+]
+
+[project.urls]
+'Homepage' = 'https://github.com/lojack5/structured'
+'Bug Tracker' = 'https://github.com/lojack5/structured/issues'
+
+
