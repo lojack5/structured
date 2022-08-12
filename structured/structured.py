@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Final
 
 
 __author__ = 'lojack5'
@@ -269,7 +270,6 @@ class StructuredMeta(type):
                 # Structured derived, but not Structured itself
                 if issubclass(base, Structured) and base is not Structured:
                     return base
-        return None
 
     @classmethod
     def compute_format(
@@ -375,11 +375,7 @@ class StructuredMeta(type):
             classdict: dict[str, Any],
             struct: struct.Struct,
             attr_actions: dict[str, Callable[[Any], Any]],
-        ) -> tuple[
-            Callable[[Structured], bytes],
-            Callable[[Structured, SupportsWrite], None],
-            Callable[[Structured, WritableBuffer, int], None],
-        ]:
+        ) -> None:
         """Create packing methods `pack`, `pack_write`, and `pack_into` for a
         Structured class.  We do this in the metaclass for a performance boost
         by bringing some items into local scope of the methods.
@@ -390,7 +386,6 @@ class StructuredMeta(type):
         :param struct: Struct object for the created class.
         :param attr_actions: Mapping of attribute names to actions applied to
             values once unpacked.
-        :return: The three generated packing methods.
         """
         packer = struct.pack
         packer_into = struct.pack_into
@@ -424,11 +419,7 @@ class StructuredMeta(type):
             classdict: dict[str, Any],
             struct: struct.Struct,
             attr_actions: dict[str, Callable[[Any], Any]],
-        ) -> tuple[
-            Callable[[Structured, ReadableBuffer], None],
-            Callable[[Structured, SupportsRead], None],
-            Callable[[Structured, ReadableBuffer, int], None],
-        ]:
+        ) -> None:
         """Create unpacking methods `unpack`, `unpack_write`, and `unpack_from`
         for a Structured class.  We do this in the metaclass for a performance
         boost by bringing some items into local scope of the methods.
@@ -439,7 +430,6 @@ class StructuredMeta(type):
         :param struct: Struct object for the created class.
         :param attr_actions: Mapping of attribute names to actions applied to
             values once unpacked.
-        :return: The three generated unpacking methods.
         """
         unpacker = struct.unpack
         unpacker_from = struct.unpack_from
