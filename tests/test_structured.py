@@ -85,21 +85,21 @@ class TestStructured:
         assert Derived3.struct.format == '10p3p'
 
     def test_override_types(self) -> None:
-        class Base(Structured):
+        class Base1(Structured):
             a: int8
             b: int16
-        class Derived(Base):
+        class Derived1(Base1):
             a: int16
-        assert Derived.struct.format == '2h'
+        assert Derived1.struct.format == '2h'
 
-        class Base(Structured):
+        class Base2(Structured):
             a: int8
             b: int8
             c: int8
-        class Derived(Base):
+        class Derived2(Base2):
             b: None
-        assert Derived.struct.format == '2b'
-        assert tuple(Derived.__format_attrs__) == ('a', 'c')
+        assert Derived2.struct.format == '2b'
+        assert tuple(Derived2.__format_attrs__) == ('a', 'c')
 
 
     def test_mismatched_byte_order(self) -> None:
@@ -260,13 +260,13 @@ class TestFormatted:
 
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):
-            _types = {int8, int16}
+            _types = frozenset({int8, int16})
         assert MutableType[int8].format == int8.format
         assert MutableType[int8].unpack_action is MutableType[int8]
 
     def test_errors(self) -> None:
         class Error1(Formatted):
-            _types = frozenset({int})
+            _types = frozenset({int})   # type: ignore
         with pytest.raises(TypeError):
             # Errors due to not having `int8` in `_types`
             Error1[int8]
@@ -279,19 +279,23 @@ class TestFormatted:
         with pytest.raises(TypeError):
             Error2[int]
 
+        Error3 = Error2[int8]
+        with pytest.raises(TypeError):
+            Error3[int8]
+
 
 def test_extract_byte_order() -> None:
     # Test the branch not exercised by the above tests
-    byte_order, format = structured.StructuredMeta.extract_byte_order('')
+    byte_order, format = structured.StructuredMeta.extract_byte_order('')   # type: ignore
     assert byte_order is ByteOrder.DEFAULT
     assert format == ''
 
-    byte_order, format = structured.StructuredMeta.extract_byte_order('<b')
+    byte_order, format = structured.StructuredMeta.extract_byte_order('<b') # type: ignore
     assert byte_order is ByteOrder.LE
     assert format == 'b'
 
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
-    assert structured.StructuredMeta.fold_overlaps('b', '') == 'b'
-    assert structured.StructuredMeta.fold_overlaps('4sI', 'I') == '4s2I'
+    assert structured.StructuredMeta.fold_overlaps('b', '') == 'b'          # type: ignore
+    assert structured.StructuredMeta.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore

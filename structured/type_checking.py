@@ -2,7 +2,7 @@ import sys
 import typing
 from typing import (
     Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union,
-    get_origin, get_type_hints, runtime_checkable,
+    get_origin, get_type_hints, runtime_checkable, NoReturn
 )
 
 if sys.version_info < (3, 10):
@@ -14,7 +14,7 @@ else:
 _T = TypeVar('_T')
 
 
-def is_classvar(annotation: Any) -> bool:
+def isclassvar(annotation: Any) -> bool:
     """Determine if a type annotations is for a class variable.
 
     :param annotation: Fully resolved type annotation to test.

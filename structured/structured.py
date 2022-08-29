@@ -1,21 +1,12 @@
 from __future__ import annotations
-from typing import Final
 
 
 __author__ = 'lojack5'
 __version__ = '1.0'
 
 __all__ = [
-    'Structured', 'Formatted',
+    'Structured',
     'ByteOrder', 'ByteOrderMode',
-    'bool8',
-    'int8', 'uint8',
-    'int16', 'uint16',
-    'int32', 'uint32',
-    'int64', 'uint64',
-    'float16', 'float32', 'float64',
-    'char', 'pascal',
-    'pad',
 ]
 
 
@@ -24,9 +15,11 @@ import re
 import struct
 from enum import Enum
 
+from .base_types import noop_action, format_type
+from .basic_types import pad
 from .type_checking import (
     _T, Any, Callable, ClassVar, Optional, ReadableBuffer, SupportsRead,
-    SupportsWrite, WritableBuffer, get_type_hints, is_classvar,
+    SupportsWrite, WritableBuffer, get_type_hints, isclassvar,
 )
 
 
@@ -49,159 +42,6 @@ class ByteOrderMode(Enum):
     """
     OVERRIDE = 'override'
     STRICT = 'strict'
-
-
-def noop_action(x: _T) -> _T:
-    """Do nothing."""
-    return x
-
-
-class format_type:
-    """Base class for annotating types in a Structured subclass."""
-    format: ClassVar[str] = ''
-    unpack_action: ClassVar[Callable] = noop_action
-
-
-class counted(format_type):
-    """Base class for string format types.  Allows for specifying the count for
-    these types.
-    """
-    def __class_getitem__(cls: type[counted], count: int) -> type[counted]:
-        if not isinstance(count, int):
-            raise TypeError('count must be an integer.')
-        if count <= 0:
-            raise ValueError('count must be positive.')
-        class _counted(cls):
-            format: ClassVar[str] = f'{count}{cls.format}'
-        if qualname := getattr(cls, '__qualname__', None):  # pragma: no branch
-            _counted.__qualname__ = f'{qualname}[{count}]'
-        return _counted
-
-
-class pad(counted):
-    """Represents one (or more, via pad[x]) padding bytes in the format string.
-    Padding bytes are discarded when read, and are written zeroed out.
-    """
-    format: ClassVar[str] = 'x'
-
-
-class bool8(int, format_type):
-    """bool struct type, stored as an integer."""
-    format: ClassVar[str] = '?'
-
-
-class int8(int, format_type):
-    """8-bit signed integer."""
-    format: ClassVar[str] = 'b'
-
-
-class uint8(int, format_type):
-    """8-bit unsigned integer."""
-    format: ClassVar[str] = 'B'
-
-
-class int16(int, format_type):
-    """16-bit signed integer."""
-    format: ClassVar[str] = 'h'
-
-
-class uint16(int, format_type):
-    """16-bit unsigned integer."""
-    format: ClassVar[str] = 'H'
-
-
-class int32(int, format_type):
-    """32-bit signed integer."""
-    format: ClassVar[str] = 'i'
-
-
-class uint32(int, format_type):
-    """32-bit unsigned integer."""
-    format: ClassVar[str] = 'I'
-
-
-class int64(int, format_type):
-    """64-bit signed integer."""
-    format: ClassVar[str] = 'q'
-
-
-class uint64(int, format_type):
-    """64-bit unsigned integer."""
-    format: ClassVar[str] = 'Q'
-
-
-class float16(float, format_type):
-    """IEEE 754 16-bit half-precision floating point number."""
-    format: ClassVar[str] = 'e'
-
-
-class float32(float, format_type):
-    """IEEE 754 32-bit floating point number."""
-    format: ClassVar[str] = 'f'
-
-
-class float64(float, format_type):
-    """IEEE 754 64-bit double-precision floating point number."""
-    format: ClassVar[str] = 'd'
-
-
-class char(str, counted):
-    """String format specifier (bytes in Python).  See 's' in the stdlib struct
-    documentation for specific details.
-    """
-    format: ClassVar[str] = 's'
-
-
-class pascal(str, counted):
-    """String format specifier (bytes in Python).  See 'p' in the stdlib struct
-    documentation for specific details.
-    """
-    format: ClassVar[str] = 'p'
-
-
-class Formatted:
-    """Class used for creating new format types.  Provides a class getitem
-    to select the format specifier, by grabbing from one of the provided format
-    types.  The allowed types may be overridden by overriding cls._types.
-
-    For examples of how to use this, see `TestFormatted`.
-    """
-    _types: frozenset[format_type] = frozenset()
-
-    @classmethod    # Need to remark as classmethod since we're caching
-    @cache
-    def __class_getitem__(cls: type[Formatted], key: type) -> type[format_type]:
-        if cls._types is Formatted._types:
-            # Default, just allow any format type
-            if issubclass(key, format_type):
-                fmt = key.format
-            else:
-                raise TypeError(
-                    f'Formatted key must be a format_type, got {key!r}.'
-                )
-        else:
-            # Overridden _types, get from that set
-            if key not in cls._types:
-                raise TypeError(
-                    'Formatted key must be one of the allowed types of '
-                    f'{cls.__name__}.'
-                )
-            elif issubclass(key, format_type):
-                fmt = key.format
-            else:
-                raise TypeError(
-                    f'Formatted key must be a format_type, got {key!r}.'
-                )
-        # Create the subclass
-        class new_cls(cls, format_type):
-            format: ClassVar[str] = fmt
-            unpack_action: ClassVar[Callable[[Any], Formatted]]
-        if (action := getattr(cls, 'unpack_action', None)) is not None:
-            new_cls.unpack_action = action
-        else:
-            new_cls.unpack_action = new_cls
-        new_cls.__qualname__ = f'{cls.__qualname__}[{key.__name__}]'
-        return new_cls
 
 
 class StructuredMeta(type):
@@ -244,7 +84,7 @@ class StructuredMeta(type):
         cls.gen_packers(classdict, st, attr_actions)
         cls.gen_unpackers(classdict, st, attr_actions)
         # Create the class
-        return super().__new__(cls, typename, bases, classdict)
+        return super().__new__(cls, typename, bases, classdict)  #type: ignore
 
     @staticmethod
     @cache
@@ -275,7 +115,7 @@ class StructuredMeta(type):
     def compute_format(
             cls,
             typehints: dict[str, Any],
-        ) -> tuple[str, dict[str, Optional[format_type]]]:
+        ) -> tuple[str, dict[str, Callable[[Any], Any]]]:
         """Compute a format string and matching attribute names and actions from a
         typehints-like dictionary.
 
@@ -285,9 +125,9 @@ class StructuredMeta(type):
             attribute names to any actions needed to apply to them on unpacking.
         """
         fmts: list[str] = ['']
-        attr_actions: dict[str, Optional[format_type]] = {}
+        attr_actions: dict[str, Callable[[Any], Any]] = {}
         for varname, vartype in typehints.items():
-            if is_classvar(vartype):
+            if isclassvar(vartype):
                 continue
             elif issubclass(vartype, format_type):
                 fmts.append(vartype.format)
@@ -437,17 +277,16 @@ class StructuredMeta(type):
         custom_unpackers = any((action is not noop_action
                                 for action in attr_actions.values()))
         if custom_unpackers:
-            attr_actions = tuple(attr_actions.items())
+            actions = tuple(attr_actions.items())
             def unpack(self, buffer: ReadableBuffer) -> None:
-                for (attr, action), value in zip(attr_actions,
-                                                 unpacker(buffer)):
+                for (attr, action), value in zip(actions, unpacker(buffer)):
                     setattr(self, attr, action(value))
             def unpack_read(self, readable: SupportsRead) -> None:
-                for (attr, action), value in zip(attr_actions,
+                for (attr, action), value in zip(actions,
                                                  unpacker(readable.read(size))):
                     setattr(self, attr, action(value))
             def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
-                for (attr, action), value in zip(attr_actions,
+                for (attr, action), value in zip(actions,
                                                  unpacker_from(buffer, offset)):
                     setattr(self, attr, action(value))
         else:
@@ -520,7 +359,7 @@ class Structured(metaclass=StructuredMeta):
         """
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return b''
+        return b''      # pragma: no cover
     def pack_write(self, writable: SupportsWrite) -> None:
         """Pack the class's values according to the format string, then write
         the result to a file-like object.
