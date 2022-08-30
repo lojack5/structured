@@ -1,6 +1,8 @@
 __author__ = 'Lojack'
 
 import io
+import struct
+
 import pytest
 
 import structured
@@ -12,10 +14,11 @@ class TestStructured:
         for byte_order in ByteOrder:
             class Base(Structured, byte_order=byte_order):
                 a: int8
+            assert isinstance(Base.serializer, struct.Struct)
             if byte_order is ByteOrder.DEFAULT:
-                assert Base.struct.format[0] == 'b'
+                assert Base.serializer.format[0] == 'b'
             else:
-                assert Base.struct.format[0] == byte_order.value
+                assert Base.serializer.format[0] == byte_order.value
 
     def test_folding(self) -> None:
         class Base(Structured):
@@ -23,7 +26,8 @@ class TestStructured:
             b: int8
             c: int32
             d: int64
-        assert Base.struct.format == '2biq'
+        assert isinstance(Base.serializer, struct.Struct)
+        assert Base.serializer.format == '2biq'
 
     def test_types(self) -> None:
         class Base(Structured):
@@ -51,8 +55,9 @@ class TestStructured:
             def method(self):
                 return 'foo'
 
-        assert ''.join(Base.__format_attrs__) == 'aAbBcCdDefghijkl'
-        assert Base.struct.format == '3xbBhHiIqQefd2ss2pp?'
+        assert isinstance(Base.serializer, struct.Struct)
+        assert ''.join(Base.attrs) == 'aAbBcCdDefghijkl'
+        assert Base.serializer.format == '3xbBhHiIqQefd2ss2pp?'
 
     def test_extending(self) -> None:
         # Test non-string types are folded in the format string
@@ -62,7 +67,8 @@ class TestStructured:
             c: int16
         class Derived(Base):
             d: int16
-        assert Derived.struct.format == 'b3h'
+        assert isinstance(Derived.serializer, struct.Struct)
+        assert Derived.serializer.format == 'b3h'
         # Test string types aren't folded
         # We shouldn't do
         ##
@@ -76,13 +82,15 @@ class TestStructured:
             a: char[10]
         class Derived2(Base2):
             b: char[3]
-        assert Derived2.struct.format == '10s3s'
+        assert isinstance(Derived2.serializer, struct.Struct)
+        assert Derived2.serializer.format == '10s3s'
 
         class Base3(Structured):
             a: pascal[10]
         class Derived3(Base3):
             b: pascal[3]
-        assert Derived3.struct.format == '10p3p'
+        assert isinstance(Derived3.serializer, struct.Struct)
+        assert Derived3.serializer.format == '10p3p'
 
     def test_override_types(self) -> None:
         class Base1(Structured):
@@ -90,7 +98,8 @@ class TestStructured:
             b: int16
         class Derived1(Base1):
             a: int16
-        assert Derived1.struct.format == '2h'
+        assert isinstance(Derived1.serializer, struct.Struct)
+        assert Derived1.serializer.format == '2h'
 
         class Base2(Structured):
             a: int8
@@ -98,8 +107,9 @@ class TestStructured:
             c: int8
         class Derived2(Base2):
             b: None
-        assert Derived2.struct.format == '2b'
-        assert tuple(Derived2.__format_attrs__) == ('a', 'c')
+        assert isinstance(Derived2.serializer, struct.Struct)
+        assert Derived2.serializer.format == '2b'
+        assert tuple(Derived2.attrs) == ('a', 'c')
 
 
     def test_mismatched_byte_order(self) -> None:
@@ -110,7 +120,8 @@ class TestStructured:
                 b: int8
         class Derived2(Base, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):
             b: int8
-        assert Derived2.struct.format == ByteOrder.LE.value + '2b'
+        assert isinstance(Derived2.serializer, struct.Struct)
+        assert Derived2.serializer.format == ByteOrder.LE.value + '2b'  # type: ignore
 
     def test_unpack_read(self) -> None:
         class Base(Structured):
@@ -143,7 +154,8 @@ class TestStructured:
         b.b = b'Hello!'
 
         class_packed = b.pack()
-        struct_packed = Base.struct.pack(b.a, b.b)
+        assert isinstance(Base.serializer, struct.Struct)
+        struct_packed = Base.serializer.pack(b.a, b.b)
         assert class_packed == struct_packed
 
         b.a = 0
@@ -160,7 +172,8 @@ class TestStructured:
         b.a = 1
         b.b = b'Hello!'
 
-        buffer = bytearray(Base.struct.size)
+        assert isinstance(Base.serializer, struct.Struct)
+        buffer = bytearray(Base.serializer.size)
         b.pack_into(buffer)
         assert bytes(buffer) == b.pack()
         b.a = 0
@@ -216,7 +229,7 @@ class TestFormatted:
             b: MutableType[uint32]
 
         b = Base()
-        data = Base.struct.pack(11, 42)
+        data = Base.serializer.pack(11, 42)
         b.unpack(data)
         assert isinstance(b.a, MutableType)
         assert type(b.a) is MutableType[int16]
@@ -241,12 +254,13 @@ class TestFormatted:
             @classmethod
             def from_int(cls, value: int):
                 return cls(None, value)
-
-            unpack_action = from_int
+        MutableType.unpack_action = MutableType.from_int
         class Base(Structured):
             a: MutableType[int8]
+            b: int8
         b = Base()
-        data = Base.struct.pack(42)
+        assert isinstance(Base.serializer, StructActionSerializer)
+        data = Base.serializer.pack(42, 10)
         for unpacker in (b.unpack, b.unpack_from):
             b.a = 0
             unpacker(data)
@@ -284,18 +298,7 @@ class TestFormatted:
             Error3[int8]
 
 
-def test_extract_byte_order() -> None:
-    # Test the branch not exercised by the above tests
-    byte_order, format = structured.StructuredMeta.extract_byte_order('')   # type: ignore
-    assert byte_order is ByteOrder.DEFAULT
-    assert format == ''
-
-    byte_order, format = structured.StructuredMeta.extract_byte_order('<b') # type: ignore
-    assert byte_order is ByteOrder.LE
-    assert format == 'b'
-
-
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
-    assert structured.StructuredMeta.fold_overlaps('b', '') == 'b'          # type: ignore
-    assert structured.StructuredMeta.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore
+    assert structured.fold_overlaps('b', '') == 'b'          # type: ignore
+    assert structured.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore

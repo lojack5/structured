@@ -119,7 +119,7 @@ class Formatted(format_type):
     def __class_getitem__(
             cls: type[Formatted],
             key: type[format_type],
-        ) -> type[format_type]:
+        ) -> type[Formatted]:
         # Error checking
         if not issubclass(key, format_type):
             raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
