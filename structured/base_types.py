@@ -44,11 +44,14 @@ provide the following methods and attributes:
 
     prepack(self) -> None
         - Perform any actions that need to be done prior to packing the whole
-          Structured instance.  This can be used, for example, to update a
+          Structured instance `obj`. This can be used, for example, to update a
           different attribute on the instance, like for an array whose size
           is stored on a seperate attribute.
 
 Optional methods:
+    TODO: Think about this one more.  It's for array's whose size is stored on
+    a Structured attribute that is not directly prior to the array itself, but
+    needs more thought.
     __set_name__(self, owner, name) -> None
         - Called when assigned to a Structured object, with `owner` being the
           Structured instance, and `name` being the attribute name this
@@ -57,6 +60,7 @@ Optional methods:
           retrieved.
 """
 from __future__ import annotations
+
 
 import struct
 from functools import cache, wraps
@@ -71,7 +75,7 @@ from .type_checking import (
 )
 
 
-class ByteOrder(Enum):
+class ByteOrder(str, Enum):
     """Byte order specifiers for passing to the struct module.  See the stdlib
     documentation for details on what each means.
     """
@@ -85,7 +89,7 @@ class ByteOrder(Enum):
     NETWORK = '!'
 
 
-class ByteOrderMode(Enum):
+class ByteOrderMode(str, Enum):
     """How derived classes with conflicting byte order markings should function.
     """
     OVERRIDE = 'override'
@@ -98,6 +102,12 @@ def noop_action(x: _T) -> _T:
 
 class structured_type:
     """Base class for all types packed/unpacked by the Structured class."""
+
+
+class requires_indexing(structured_type):
+    """Base class for all indexed types that must be specialized before
+    being used.
+    """
 
 
 class format_type(structured_type):
@@ -118,6 +128,8 @@ class counted(format_type):
     """Base class for `format_type`s that often come in continuous blocks of a
     fixed number of instances.  The examples are char and pad characters.
     """
+    @classmethod
+    @cache
     def __class_getitem__(cls: type[counted], count: int) -> type[counted]:
         # Error checking
         if not isinstance(count, int):
@@ -131,28 +143,38 @@ class counted(format_type):
         return _counted
 
 
-@runtime_checkable
-class Serializer(Protocol):
+class Serializer:
     size: int
 
-    def pack(self, *values: Any) -> bytes: ...
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None: ...
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None: ...
-    def unpack(self, buffer: ReadableBuffer) -> tuple: ...
-    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple: ...
-    def unpack_read(self, readable: SupportsRead) -> tuple: ...
+    def pack(self, *values: Any) -> bytes:
+        raise NotImplementedError
+    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+        raise NotImplementedError
+    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+        raise NotImplementedError
+    def unpack(self, buffer: ReadableBuffer) -> tuple:
+        raise NotImplementedError
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
+        raise NotImplementedError
+    def unpack_read(self, readable: SupportsRead) -> tuple:
+        raise NotImplementedError
 
-    def prepack(self) -> None: pass
-
-
-@runtime_checkable
-class SupportsSetName(Protocol):
-    def __set_name__(self, owner, name: str) -> None: ...
+    def prepack(self, obj) -> None: pass
 
 
 @runtime_checkable
 class NeedsByteOrder(Protocol):
-    def __init__(self, byte_order: ByteOrder) -> None: ...
+    def __init__(self, byte_order: ByteOrder) -> None: ...  # pragma: no cover
+
+
+# Common implementation details for dynamically sized serializers
+# Serializers in this library are implementation details, so we don't
+# hide the setter behind a property
+class DynamicSize:
+    size: int
+
+    def __init__(self) -> None:
+        self.size = 0
 
 
 # Some concrete serializers
@@ -184,10 +206,10 @@ class StructActionSerializer(StructSerializer):
     # unpack under the hood.
 
 
-SerializerInfo = dict[Serializer, Union[slice, int]]
+SerializerInfo = dict[Serializer, slice]
 
 
-class CompoundSerializer(Serializer, SupportsSetName):
+class CompoundSerializer(Serializer):
     """A serializer that chains together multiple serializers."""
 
     def __init__(self, serializers: SerializerInfo) -> None:
@@ -198,37 +220,39 @@ class CompoundSerializer(Serializer, SupportsSetName):
     def size(self) -> int:
         return self._size
 
-    def prepack(self) -> None:
+    def prepack(self, obj) -> None:
         for serializer in self.serializers:
-            serializer.prepack()
-
-    def __set_name__(self, owner, name: str) -> None:
-        for serializer in self.serializers:
-            if isinstance(serializer, SupportsSetName):
-                serializer.__set_name__(owner, name)
+            serializer.prepack(obj)
 
     def pack(self, *values: Any) -> bytes:
         with BytesIO() as out:
             for serializer, attr_slice in self.serializers.items():
-                out.write(serializer.pack(*values[attr_slice]))
+                out.write(serializer.pack(*(values[attr_slice])))
             return out.getvalue()
 
     def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
         size = 0
         for serializer, attr_slice in self.serializers.items():
-            serializer.pack_into(buffer, offset + size, *values[attr_slice])
+            serializer.pack_into(buffer, offset + size, *(values[attr_slice]))
             size += serializer.size
         self._size = size
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
         for serializer, attr_slice in self.serializers.items():
-            serializer.pack_write(writable, *values[attr_slice])
+            serializer.pack_write(writable, *(values[attr_slice]))
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         values = []
         start = 0
         for serializer in self.serializers:
-            values.append(serializer.unpack(buffer[start:]))    # type: ignore
+            if isinstance(serializer, StructSerializer):
+                # struct.Struct requires buffers of the exact size to unpack
+                values.append(serializer.unpack(buffer[start:start + serializer.size]))
+            else:
+                # Custom Serializers work with buffers of unspecified length,
+                # due to not necessarily knowing how must is needed to unpack
+                # before hand.
+                values.append(serializer.unpack(buffer[start:]))
             start += serializer.size
         self._size = start
         return tuple(chain(*values))
@@ -251,7 +275,7 @@ class CompoundSerializer(Serializer, SupportsSetName):
 
 
 @cache
-def struct_cache(format: str, actions: tuple[Callable[[Any], Any]]) -> StructSerializer:
+def struct_cache(format: str, actions: tuple[Callable[[Any], Any], ...] = ()) -> StructSerializer:
     """Cached struct.Struct creation.
 
     :param format: struct packing format string.

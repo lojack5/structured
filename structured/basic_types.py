@@ -31,27 +31,27 @@ class pad(counted):
 
 
 class bool8(int, format_type):
-    """bool struct type, stored as an integer."""
+    """bool struct type, stored as an integer: '?'."""
     format: ClassVar[str] = '?'
 
 
 class int8(int, format_type):
-    """8-bit signed integer."""
+    """8-bit signed integer: 'b'."""
     format: ClassVar[str] = 'b'
 
 
 class uint8(int, format_type):
-    """8-bit unsigned integer."""
+    """8-bit unsigned integer: 'B'. """
     format: ClassVar[str] = 'B'
 
 
 class int16(int, format_type):
-    """16-bit signed integer."""
+    """16-bit signed integer: 'h'."""
     format: ClassVar[str] = 'h'
 
 
 class uint16(int, format_type):
-    """16-bit unsigned integer."""
+    """16-bit unsigned integer: 'H'."""
     format: ClassVar[str] = 'H'
 
 
@@ -61,17 +61,17 @@ class int32(int, format_type):
 
 
 class uint32(int, format_type):
-    """32-bit unsigned integer."""
+    """32-bit unsigned integer: 'I'."""
     format: ClassVar[str] = 'I'
 
 
 class int64(int, format_type):
-    """64-bit signed integer."""
+    """64-bit signed integer: 'q'."""
     format: ClassVar[str] = 'q'
 
 
 class uint64(int, format_type):
-    """64-bit unsigned integer."""
+    """64-bit unsigned integer: 'Q'."""
     format: ClassVar[str] = 'Q'
 
 

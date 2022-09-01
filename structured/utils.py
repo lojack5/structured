@@ -1,8 +1,6 @@
 """
 Various utility methods.
 """
-from inspect import isclass
-
 from .type_checking import _T, NoReturn, Any, Callable
 
 
@@ -21,10 +19,12 @@ def specialized(base_cls: type, key: Any) -> Callable[[type[_T]], type[_T]]:
     """
     def wrapper(cls: type[_T]) -> type[_T]:
         cls.__class_getitem__ = __error_getitem__   # type: ignore
-        if isclass(key):
-            keyname = key.__qualname__
+        if isinstance(key, tuple):
+            keyname = ', '.join((getattr(k, '__qualname__', f'{k}')
+                                 for k in key
+            ))
         else:
-            keyname = f'{key}'
+            keyname = getattr(key, '__qualname__', f'{key}')
         cls.__qualname__ = f'{base_cls.__qualname__}[{keyname}]'
         return cls
     return wrapper
