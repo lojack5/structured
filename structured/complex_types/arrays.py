@@ -315,7 +315,7 @@ class _structured_array(_header, Serializer):
             item.pack_into(buffer, offset + self.size)
             self.size += item.serializer.size
         data_size = self.size - self.header.size
-        self.pack_header(self.header.pack_into, count, data_size)
+        self.pack_header(partial(self.header.pack_into, buffer, offset), count, data_size)
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
         arr: list[Structured] = values[0]
@@ -325,7 +325,8 @@ class _structured_array(_header, Serializer):
             header_pos = writable.tell()        # type: ignore
         else:
             header_pos = 0
-        self.pack_header(self.header.pack_write, count, 0)
+        header_packer = partial(self.header.pack_write, writable)
+        self.pack_header(header_packer, count, 0)
         for item in arr:
             item.pack_write(writable)
             self.size += item.serializer.size
@@ -333,7 +334,7 @@ class _structured_array(_header, Serializer):
             data_size = self.size - self.header.size
             final_pos = writable.tell()     # type: ignore
             writable.seek(header_pos)       # type: ignore
-            self.pack_header(self.header.pack_write, count, data_size)
+            self.pack_header(header_packer, count, data_size)
             writable.seek(final_pos)        # type: ignore
 
     def _item_unpacker(self, buffer: ReadableBuffer) -> Structured:
