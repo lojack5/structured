@@ -1,4 +1,6 @@
 from __future__ import annotations
+from dataclasses import dataclass
+from typing import TypeVar
 
 __author__ = 'lojack5'
 __version__ = '1.0'
@@ -185,7 +187,7 @@ class StructuredMeta(type):
         # Create the class
         return super().__new__(cls, typename, bases, classdict)  #type: ignore
 
-
+_C = TypeVar('_C', bound='Structured')
 class Structured(metaclass=StructuredMeta):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
@@ -193,6 +195,23 @@ class Structured(metaclass=StructuredMeta):
     serializer: ClassVar[Serializer]
     attrs: ClassVar[tuple[str, ...]]
     byte_order: ClassVar[ByteOrder]
+
+    def __init__(self, *args, **kwargs):
+        # TODO: Create the init function on the fly (ala dataclass) so we can
+        # leverage python's error checking for argument names, etc.
+        attrs_values = dict(zip(self.attrs, args))
+        duplicates = set(attrs_values.keys()) & set(kwargs.keys())
+        if duplicates:
+            raise TypeError(f'{duplicates} arguments passed as both positional and keyword.')
+        attrs_values |= kwargs
+        present = set(attrs_values.keys())
+        if (missing := (attr_set := set(self.attrs)) - present):
+            raise TypeError(f'missing arguments {missing}')
+        elif (extra := present - attr_set):
+            raise TypeError(f'unknown arguments for {extra}')
+
+        for attr, value in attrs_values.items():
+            setattr(self, attr, value)
 
     # Method prototypes for type checkers, actual implementations are created
     # by the metaclass.
@@ -245,6 +264,18 @@ class Structured(metaclass=StructuredMeta):
         """
         self.serializer.pack_into(buffer, offset, *(getattr(self, attr) for attr, in self.attrs))
 
+    @classmethod
+    def create_unpack(cls: type[_C], buffer: ReadableBuffer) -> _C:
+        return cls(*cls.serializer.unpack(buffer))
+
+    @classmethod
+    def create_unpack_from(cls: type[_C], buffer: ReadableBuffer, offset: int = 0) -> _C:
+        return cls(*cls.serializer.unpack_from(buffer, offset))
+
+    @classmethod
+    def create_unpack_read(cls: type[_C], readable: SupportsRead) -> _C:
+        return cls(*cls.serializer.unpack_read(readable))
+
     def __str__(self) -> str:
         """Descriptive representation of this class."""
         vals = ', '.join((
@@ -252,3 +283,11 @@ class Structured(metaclass=StructuredMeta):
             for attr in self.attrs
         ))
         return f'{type(self).__name__}({vals})'
+
+    def __eq__(self, other) -> bool:
+        if type(other) == type(self):
+            return all((
+                getattr(self, attr) == getattr(other, attr)
+                for attr in self.attrs
+            ))
+        return NotImplemented

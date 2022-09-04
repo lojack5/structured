@@ -28,35 +28,26 @@ class TestBlob:
             slice(2, 4),
         )
         assert Base.attrs == ('a', 'b', 'c', 'd')
-        b = Base()
 
         st = struct.Struct('hBs2I')
+
+        target_obj = Base(10, b'a', 42, 11)
         target_data = st.pack(10, 1, b'a', 42, 11)
-        assert len(target_data) == st.size
 
         # unpack/pack
-        b.unpack(target_data)
-        assert b.serializer.size == st.size
-        assert b.a == 10
-        assert b.b == b'a'
-        assert b.c == 42
-        assert b.d == 11
-        test_data = b.pack()
-        assert test_data == target_data
+        assert target_obj.pack() == target_data
+        assert Base.create_unpack(target_data) == target_obj
 
-        # unpack_from/pack_into
-        buffer = bytearray(target_data)
-        b.a = 0
-        b.unpack_from(buffer)
-        assert b.a == 10
-        b.pack_into(buffer)
-        assert  test_data == bytes(target_data)
+        # from/into
+        buffer = bytearray(st.size)
+        target_obj.pack_into(buffer)
+        assert target_obj.serializer.size == st.size
+        assert bytes(buffer) == target_data
+        assert Base.create_unpack_from(buffer) == target_obj
 
-        # unpack_read/pack_write
-        with io.BytesIO() as out:
-            b.pack_write(out)
-            assert out.getvalue() == target_data
-        with io.BytesIO(target_data) as ins:
-            b.unpack_read(ins)
-            assert b.a == 10
-
+        with io.BytesIO() as stream:
+            target_obj.pack_write(stream)
+            assert target_obj.serializer.size == st.size
+            assert stream.getvalue() == target_data
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == target_obj

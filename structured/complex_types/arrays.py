@@ -30,11 +30,11 @@ SizeTypes = Union[uint8, uint16, uint32, uint64]
 
 class size_check(container):
     def check(self, wrapped):
-        if (wrapped is not None or
-            not isinstance(wrapped, type) or
-            not issubclass(wrapped, SizeTypes)
-            ):
-            raise TypeError('Size check must be None or a uint* type')
+        if wrapped is not None:
+            if (not isinstance(wrapped, type) or
+                not issubclass(wrapped, SizeTypes)
+                ):
+                raise TypeError('Size check must be None or a uint* type')
 
 
 
@@ -79,8 +79,9 @@ class array(list, requires_indexing):
                 'arrays of format_type objects do not support size checks'
             )
         # count
-        if isinstance(count, int) and count <= 0:
-            cls.error(ValueError, 'count must be positive')
+        if isinstance(count, int):
+            if count <= 0:
+                cls.error(ValueError, 'count must be positive')
         elif not isinstance(count, type) or not issubclass(count, SizeTypes):
             cls.error(TypeError, 'count must be an integer or a uint* type.')
 
@@ -229,8 +230,8 @@ class _header:
     header: StructSerializer
     size: int
 
-    def __init__(self, byte_order: ByteOrder) -> None:
-        self.header = struct_cache('')
+    def __init__(self, byte_order: ByteOrder, fmt: Optional[str] =  '') -> None:
+        self.header = struct_cache(fmt, byte_order=byte_order)
         self.size = 0
     def pack_header(self, packer, count, data_size) -> None:
         pass
@@ -258,7 +259,7 @@ class _checked_static_header(_static_header):
     size_type: ClassVar[type[SizeTypes]]
 
     def __init__(self, byte_order: ByteOrder) -> None:
-        self.header = struct_cache(self.size_type.format, byte_order=byte_order)
+        super().__init__(byte_order, self.size_type.format)
     def pack_header(self, packer, count: int, data_size: int):
         super().pack_header(packer, count, 0)
         packer(data_size)
@@ -277,9 +278,7 @@ class _dynamic_header(_header):
     count_type: ClassVar[type[SizeTypes]]
 
     def __init__(self, byte_order: ByteOrder) -> None:
-        self.header = struct_cache(
-            self.count_type.format, byte_order=byte_order
-        )
+        super().__init__(byte_order, self.count_type.format)
     def pack_header(self, packer, count: int, data_size: int):
         packer(count)
     def unpack_header(self, unpacker) -> tuple[int, int]:
@@ -292,14 +291,14 @@ class _checked_dynamic_header(_dynamic_header):
 
     def __init__(self, byte_order: ByteOrder) -> None:
         fmt = f'{self.count_type.format}{self.size_type.format}'
-        self.header = struct_cache(fmt, byte_order=byte_order)
+        _header.__init__(self, byte_order, fmt)
     def pack_header(self, packer, count: int, data_size: int):
         packer(count, data_size)
     def unpack_header(self, unpacker) -> tuple[int, int]:
         return unpacker()
 
 
-class _structured_array(Serializer, _header):
+class _structured_array(_header, Serializer):
     """Base funtionality for packing/unpacking *just* the items in the array"""
     obj_type: ClassVar[type[Structured]]
 
@@ -337,24 +336,22 @@ class _structured_array(Serializer, _header):
             self.pack_header(self.header.pack_write, count, data_size)
             writable.seek(final_pos)        # type: ignore
 
-    def _item_unpacker(self, buffer: ReadableBuffer, item: Structured) -> None:
-        item.unpack(buffer[self.size:])
+    def _item_unpacker(self, buffer: ReadableBuffer) -> Structured:
+        return self.obj_type.create_unpack(buffer[self.size:])
     def _item_unpacker_from(
             self,
             buffer: ReadableBuffer,
             offset: int,
-            item: Structured,
-        ) -> None:
-        item.unpack_from(buffer, offset + self.size)
+        ) -> Structured:
+        return self.obj_type.create_unpack_from(buffer, offset + self.size)
 
     def _unpack(self, header_unpacker, item_unpacker):
         self.size = self.header.size
         count, expected_size = self.unpack_header(header_unpacker)
         arr = []
         for i in range(count):
-            item = self.obj_type()
-            item_unpacker(item)
-            self.size += item.serializer.size
+            arr.append(item_unpacker())
+            self.size += arr[-1].serializer.size
         self.check_size(expected_size)
         return arr,
 
@@ -373,7 +370,7 @@ class _structured_array(Serializer, _header):
     def unpack_read(self, readable: SupportsRead) -> tuple:
         return self._unpack(
             partial(self.header.unpack_read, readable),
-            partial(self.obj_type.unpack_read, readable=readable)
+            partial(self.obj_type.create_unpack_read, readable=readable)
         )
 
 

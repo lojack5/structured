@@ -126,8 +126,7 @@ class TestStructured:
     def test_unpack_read(self) -> None:
         class Base(Structured):
             a: int8
-        b = Base()
-        b.a = 42
+        b = Base(42)
         data = b.pack()
         with io.BytesIO(data) as stream:
             b.a = 0
@@ -137,8 +136,7 @@ class TestStructured:
     def test_pack_write(self) -> None:
         class Base(Structured):
             a: int8
-        b = Base()
-        b.a = 42
+        b = Base(42)
         data = b.pack()
         with io.BytesIO() as stream:
             b.pack_write(stream)
@@ -149,47 +147,36 @@ class TestStructured:
             a: int8
             _: pad[2]
             b: char[6]
-        b = Base()
-        b.a = 1
-        b.b = b'Hello!'
 
-        class_packed = b.pack()
         assert isinstance(Base.serializer, struct.Struct)
-        struct_packed = Base.serializer.pack(b.a, b.b)
-        assert class_packed == struct_packed
 
-        b.a = 0
-        b.b = b''
-        b.unpack(class_packed)
-        assert b.a == 1
-        assert b.b == b'Hello!'
+        target_obj = Base(1, b'Hello!')
+
+        st = struct.Struct('b2x6s')
+        target_data = st.pack(1, b'Hello!')
+
+        assert target_obj.pack() == target_data
+        assert Base.create_unpack(target_data) == target_obj
 
     def test_pack_unpack_into(self) -> None:
         class Base(Structured):
             a: int8
             b: char[6]
-        b = Base()
-        b.a = 1
-        b.b = b'Hello!'
+        target_obj = Base(1, b'Hello!')
 
         assert isinstance(Base.serializer, struct.Struct)
+
         buffer = bytearray(Base.serializer.size)
-        b.pack_into(buffer)
-        assert bytes(buffer) == b.pack()
-        b.a = 0
-        b.b = b''
-        b.unpack_from(buffer)
-        assert b.a == 1
-        assert b.b == b'Hello!'
+        target_obj.pack_into(buffer)
+        assert bytes(buffer) == target_obj.pack()
+        assert Base.create_unpack_from(buffer) == target_obj
 
     def test_str(self) -> None:
         class Base(Structured):
             a: int8
             _: pad[3]
             b: char[6]
-        b = Base()
-        b.a = 10
-        b.b = b'Hello!'
+        b = Base(10, b'Hello!')
         assert str(b) == "Base(a=10, b=b'Hello!')"
 
 
@@ -221,25 +208,28 @@ class TestFormatted:
             def negate(self) -> None:
                 self._value = -self._value
 
+            def __eq__(self, other) -> bool:
+                if isinstance(other, type(self)):
+                    return self._value == other._value
+                else:
+                    return self._value == other
+
         assert MutableType[int16].format == int16.format
         assert MutableType[int16].unpack_action is MutableType[int16]
 
         class Base(Structured):
             a: MutableType[int16]
             b: MutableType[uint32]
+        target_obj = Base(MutableType[int16](11), MutableType[uint32](42))
 
-        b = Base()
-        data = Base.serializer.pack(11, 42)
-        b.unpack(data)
+        target_data = Base.serializer.pack(11, 42)
+
+        assert target_obj.pack() == target_data
+        b = Base.create_unpack(target_data)
         assert isinstance(b.a, MutableType)
         assert type(b.a) is MutableType[int16]
-        assert int(b.a) == 11
-
-        packed = b.pack()
-        assert data == packed
-
-        b.a.negate()
-        assert int(b.a) == -11
+        assert b == target_obj
+        assert b.a == 11
 
     def test_custom_action(self) -> None:
         class MutableType(Formatted):
@@ -254,23 +244,34 @@ class TestFormatted:
             @classmethod
             def from_int(cls, value: int):
                 return cls(None, value)
+
+            def __eq__(self, other):
+                if isinstance(other, type(self)):
+                    return self._wrapped == other._wrapped
+                else:
+                    return self._wrapped == other
         MutableType.unpack_action = MutableType.from_int
         class Base(Structured):
             a: MutableType[int8]
             b: int8
-        b = Base()
+        target_obj = Base(MutableType[int8](None, 42), 10)
+
         assert isinstance(Base.serializer, StructActionSerializer)
-        data = Base.serializer.pack(42, 10)
-        for unpacker in (b.unpack, b.unpack_from):
-            b.a = 0
-            unpacker(data)
-            assert isinstance(b.a, MutableType)
-            assert int(b.a) == 42
-        with io.BytesIO(data) as ins:
-            b.a = 0
-            b.unpack_read(ins)
-            assert isinstance(b.a, MutableType)
-            assert int(b.a) == 42
+        target_data = Base.serializer.pack(42, 10)
+
+        assert target_obj.pack() == target_data
+        assert Base.create_unpack(target_data) == target_obj
+
+        buffer = bytearray(Base.serializer.size)
+        target_obj.pack_into(buffer)
+        assert bytes(buffer) == target_data
+        assert Base.create_unpack_from(buffer) == target_obj
+
+        with io.BytesIO() as stream:
+            target_obj.pack_write(stream)
+            assert stream.getvalue() == target_data
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == target_obj
 
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):

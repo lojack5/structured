@@ -42,5 +42,6 @@ def specialized(base_cls: type, key: Any) -> Callable[[type[_T]], type[_T]]:
         else:
             keyname = getattr(key, '__qualname__', f'{key}')
         cls.__qualname__ = f'{base_cls.__qualname__}[{keyname}]'
+        cls.__name__ = f'{base_cls.__name__}[{keyname}]'
         return cls
     return wrapper

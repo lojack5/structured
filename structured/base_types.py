@@ -17,7 +17,9 @@ provide the following methods and attributes:
 
     unpack(buffer: byteslike) -> tuple
         - Unpacks from a bytes-like buffer, returning a tuple of objects to be
-          assigned to the associated attributes.
+          assigned to the associated attributes. NOTE: unlike struct.Struct,
+          unpack must support unpacking from buffers that are *longer* than
+          are required for the packed data.
     unpack_from(buffer: BufferProtocol, offset: int = 0) -> tuple
         - Like unpack, but from an object supporting the Buffer Protocol.
     unpack_read(readable: SupportsRead) -> tuple
@@ -148,6 +150,8 @@ class Serializer(structured_type):
 
 # Some concrete serializers
 class StructSerializer(struct.Struct, Serializer):
+    def unpack(self, buffer: ReadableBuffer) -> tuple:
+        return super().unpack(buffer[:self.size])
     def unpack_read(self, readable: SupportsRead) -> tuple:
         return self.unpack(readable.read(self.size))
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
@@ -207,15 +211,7 @@ class CompoundSerializer(Serializer):
         values = []
         start = 0
         for serializer in self.serializers:
-            if isinstance(serializer, StructSerializer):
-                # struct.Struct requires buffers of the exact size to unpack
-                stop = start + serializer.size
-                values.append(serializer.unpack(buffer[start:stop]))
-            else:
-                # Custom Serializers work with buffers of unspecified length,
-                # due to not necessarily knowing how must is needed to unpack
-                # before hand.
-                values.append(serializer.unpack(buffer[start:]))
+            values.append(serializer.unpack(buffer[start:]))
             start += serializer.size
         self.size = start
         return tuple(chain(*values))
