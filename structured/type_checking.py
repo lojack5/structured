@@ -2,7 +2,7 @@ import sys
 import typing
 from typing import (
     Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union,
-    get_origin, get_type_hints, runtime_checkable, NoReturn
+    get_origin, get_type_hints, runtime_checkable, NoReturn, cast,
 )
 
 if sys.version_info < (3, 10):

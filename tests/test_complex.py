@@ -10,8 +10,6 @@ class TestBlob:
     def test_errors(self):
         with pytest.raises(TypeError):
             blob[1.0]
-        with pytest.raises(NotImplementedError):
-            blob['size']
 
     def test_static(self):
         assert blob[13] is char[13]

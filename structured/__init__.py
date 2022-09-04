@@ -4,6 +4,4 @@ from .base_types import (
     Serializer, StructSerializer, StructActionSerializer, CompoundSerializer,
     ByteOrder, ByteOrderMode,
 )
-from .complex_types import (
-    blob,
-)
+from .complex_types import *

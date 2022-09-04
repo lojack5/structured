@@ -1,8 +1,4 @@
 from __future__ import annotations
-import io
-from itertools import chain
-from typing import Union, cast
-
 
 __author__ = 'lojack5'
 __version__ = '1.0'
@@ -12,15 +8,14 @@ __all__ = [
     'ByteOrder', 'ByteOrderMode',
 ]
 
-
 from functools import reduce
 import re
 
 from .base_types import *
 from .basic_types import pad
 from .type_checking import (
-    Any, ClassVar, Optional, ReadableBuffer, SupportsRead,
-    SupportsWrite, WritableBuffer, get_type_hints, isclassvar,
+    Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
+    WritableBuffer, get_type_hints, isclassvar, cast,
 )
 
 
@@ -83,12 +78,11 @@ def create_serializer(typehints: dict[str, Any], byte_order: ByteOrder) -> tuple
             all_attrs.extend(attrs)
         elif len(group) == 1:
             # A custom serializer is being used
-            all_attrs.append(next(iter(group.keys())))
             serializer_type = next(iter(group.values()))
-            if issubclass(serializer_type, NeedsByteOrder):
-                serializer = serializer_type(byte_order)
-            else:
-                serializer = serializer_type()
+            if not isinstance(serializer_type, type) or not issubclass(serializer_type, Serializer):
+                raise TypeError(f'Uh oh, serializers bad: {serializer_type}')
+            all_attrs.append(next(iter(group.keys())))
+            serializer = serializer_type(byte_order)
             slice_stop = slice_start + 1
         else:
             raise RuntimeError(f'Uh oh, serializers bad: {group!r}')
@@ -232,7 +226,6 @@ class Structured(metaclass=StructuredMeta):
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        self.serializer.prepack(self)
         return self.serializer.pack(*(getattr(self, attr) for attr in self.attrs))
 
     def pack_write(self, writable: SupportsWrite) -> None:
@@ -241,7 +234,6 @@ class Structured(metaclass=StructuredMeta):
 
         :param writable: writable file-like object.
         """
-        self.serializer.prepack(self)
         self.serializer.pack_write(writable, *(getattr(self, attr) for attr in self.attrs))
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
@@ -251,7 +243,6 @@ class Structured(metaclass=StructuredMeta):
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self.serializer.prepack(self)
         self.serializer.pack_into(buffer, offset, *(getattr(self, attr) for attr, in self.attrs))
 
     def __str__(self) -> str:
