@@ -7,9 +7,33 @@ import pytest
 
 import structured
 from structured import *
+from structured.base_types import structured_type
 
 
 class TestStructured:
+    def test_init__(self) -> None:
+        class Base(Structured):
+            a: int8
+            b: int32
+            c: int16
+
+        with pytest.raises(TypeError):
+            Base(1, 2, 3, 4)    # Too many args
+        with pytest.raises(TypeError):
+            Base(1)             # not enough args
+        with pytest.raises(TypeError):
+            Base(2, 3, a=1)     # a both positional and keyword
+        with pytest.raises(TypeError):
+            Base(1, 2, 3, foo=1)    # Extra argument
+
+        a = Base(1, 2, 3)
+        assert a.a == 1
+        assert a.b == 2
+        assert a.c == 3
+
+        b = Base(1, 2, c=3)
+        assert b == a
+
     def test_byte_order(self) -> None:
         for byte_order in ByteOrder:
             class Base(Structured, byte_order=byte_order):
@@ -158,6 +182,11 @@ class TestStructured:
         assert target_obj.pack() == target_data
         assert Base.create_unpack(target_data) == target_obj
 
+        test_obj = Base(0, b'')
+        test_obj.unpack(target_data)
+        assert test_obj == target_obj
+
+
     def test_pack_unpack_into(self) -> None:
         class Base(Structured):
             a: int8
@@ -171,6 +200,10 @@ class TestStructured:
         assert bytes(buffer) == target_obj.pack()
         assert Base.create_unpack_from(buffer) == target_obj
 
+        test_obj = Base(0, b'')
+        test_obj.unpack_from(buffer)
+        assert test_obj == target_obj
+
     def test_str(self) -> None:
         class Base(Structured):
             a: int8
@@ -179,127 +212,40 @@ class TestStructured:
         b = Base(10, b'Hello!')
         assert str(b) == "Base(a=10, b=b'Hello!')"
 
-
-class TestCounted:
-    def test_indexing(self) -> None:
-        cls = pad[2]
-        assert cls.format == '2x'
-        assert cls.__qualname__ == 'pad[2]'
-
-        with pytest.raises(TypeError):
-            pad['']
-        with pytest.raises(ValueError):
-            pad[0]
-
-
-class TestFormatted:
-    def test_subclassing_any(self) -> None:
-        class MutableType(Formatted):
-            def __init__(self, value: int):
-                self._value = value
-
-            def __int__(self) -> int:
-                return self._value
-
-            def __index__(self) -> int:
-                # For struct.pack
-                return self._value
-
-            def negate(self) -> None:
-                self._value = -self._value
-
-            def __eq__(self, other) -> bool:
-                if isinstance(other, type(self)):
-                    return self._value == other._value
-                else:
-                    return self._value == other
-
-        assert MutableType[int16].format == int16.format
-        assert MutableType[int16].unpack_action is MutableType[int16]
-
+    def test_eq(self) -> None:
         class Base(Structured):
-            a: MutableType[int16]
-            b: MutableType[uint32]
-        target_obj = Base(MutableType[int16](11), MutableType[uint32](42))
-
-        target_data = Base.serializer.pack(11, 42)
-
-        assert target_obj.pack() == target_data
-        b = Base.create_unpack(target_data)
-        assert isinstance(b.a, MutableType)
-        assert type(b.a) is MutableType[int16]
-        assert b == target_obj
-        assert b.a == 11
-
-    def test_custom_action(self) -> None:
-        class MutableType(Formatted):
-            _wrapped: int
-
-            def __init__(self, not_an_int, value: int):
-                self._wrapped = value
-
-            def __index__(self) -> int:
-                return self._wrapped
-
-            @classmethod
-            def from_int(cls, value: int):
-                return cls(None, value)
-
-            def __eq__(self, other):
-                if isinstance(other, type(self)):
-                    return self._wrapped == other._wrapped
-                else:
-                    return self._wrapped == other
-        MutableType.unpack_action = MutableType.from_int
-        class Base(Structured):
-            a: MutableType[int8]
-            b: int8
-        target_obj = Base(MutableType[int8](None, 42), 10)
-
-        assert isinstance(Base.serializer, StructActionSerializer)
-        target_data = Base.serializer.pack(42, 10)
-
-        assert target_obj.pack() == target_data
-        assert Base.create_unpack(target_data) == target_obj
-
-        buffer = bytearray(Base.serializer.size)
-        target_obj.pack_into(buffer)
-        assert bytes(buffer) == target_data
-        assert Base.create_unpack_from(buffer) == target_obj
-
-        with io.BytesIO() as stream:
-            target_obj.pack_write(stream)
-            assert stream.getvalue() == target_data
-            stream.seek(0)
-            assert Base.create_unpack_read(stream) == target_obj
-
-    def test_subclassing_specialized(self) -> None:
-        class MutableType(Formatted):
-            _types = frozenset({int8, int16})
-        assert MutableType[int8].format == int8.format
-        assert MutableType[int8].unpack_action is MutableType[int8]
-
-    def test_errors(self) -> None:
-        class Error1(Formatted):
-            _types = frozenset({int})   # type: ignore
-        with pytest.raises(TypeError):
-            # Errors due to not having `int8` in `_types`
-            Error1[int8]
-        with pytest.raises(TypeError):
-            # Errors due to `int` not being a `format_type`
-            Error1[int]
-
-        class Error2(Formatted):
+            a: int8
+            b: char[6]
+        class Derived(Base):
             pass
-        with pytest.raises(TypeError):
-            Error2[int]
 
-        Error3 = Error2[int8]
-        with pytest.raises(TypeError):
-            Error3[int8]
+        a = Base(1, 'Hello!')
+        b = Base(1, 'Hello!')
+        c = Derived(1, 'Hello!')
+        d = Base(0, 'Hello!')
+        e = Base(1, 'banana')
+
+        assert a == b
+        assert a != c
+        assert a != d
+        assert a != e
 
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
     assert structured.fold_overlaps('b', '') == 'b'          # type: ignore
     assert structured.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore
+    assert structured.fold_overlaps('', 'b') == 'b'          # type: ignore
+
+
+class rogue_type(structured_type): pass
+
+
+def test_create_serializers() -> None:
+    # Just the bits not tested by the above
+    with pytest.raises(TypeError):
+        class Error(Structured):
+            a: array
+    with pytest.raises(TypeError):
+        class Error2(Structured):
+            a: rogue_type

@@ -1,7 +1,6 @@
 """
 Various utility methods.
 """
-from typing import Generic
 from .type_checking import _T, NoReturn, Any, Callable
 
 

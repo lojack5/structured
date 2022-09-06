@@ -17,20 +17,35 @@ from .base_types import *
 from .basic_types import pad
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
-    WritableBuffer, get_type_hints, isclassvar, cast,
+    WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union,
 )
 
 
-def filter_typehints(typehints: dict[str, Any]) -> dict[str, type[structured_type]]:
+_Annotation = Union[format_type, Serializer]
+
+def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
+    if isclassvar(attr_type):
+        return False
+    if issubclass(attr_type, requires_indexing):
+        raise TypeError(f'{attr_type.__qualname__} must be specialized')
+    if issubclass(attr_type, structured_type):
+        if issubclass(attr_type, (format_type, Serializer)):
+            return True
+        else:
+            raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
+    return False
+
+
+def filter_typehints(typehints: dict[str, Any]) -> dict[str, type[_Annotation]]:
     return {
         attr: attr_type
         for attr, attr_type in typehints.items()
-        if not isclassvar(attr_type) and issubclass(attr_type, structured_type)
+        if validate_typehint(attr_type)
     }
 
 
-def split_typehints(typehints: dict[str, type[structured_type]]) -> list[dict[str, type[structured_type]]]:
-    split: list[dict[str, type[structured_type]]] = []
+def split_typehints(typehints: dict[str, type[_Annotation]]) -> list[dict[str, type[_Annotation]]]:
+    split: list[dict[str, type[_Annotation]]] = []
 
     current_group = {}
     def finalize_group():
@@ -42,7 +57,7 @@ def split_typehints(typehints: dict[str, type[structured_type]]) -> list[dict[st
     for attr, attr_type in typehints.items():
         if issubclass(attr_type, format_type):
             current_group[attr] = attr_type
-        elif issubclass(attr_type, Serializer):
+        else:   # Serializer
             finalize_group()
             split.append({attr: attr_type})
     finalize_group()
@@ -69,7 +84,6 @@ def create_serializer(typehints: dict[str, Any], byte_order: ByteOrder) -> tuple
     # First, generate struct.Struct objects where necessary
     serializers = {}
     for group in hint_groups:
-        if not group: continue
         first_type = next(iter(group.values()))
         slice_start = len(all_attrs)
         if issubclass(first_type, format_type):
@@ -78,16 +92,13 @@ def create_serializer(typehints: dict[str, Any], byte_order: ByteOrder) -> tuple
             serializer, attrs = create_struct(group, byte_order)
             slice_stop = slice_start + len(attrs)
             all_attrs.extend(attrs)
-        elif len(group) == 1:
+        else:
             # A custom serializer is being used
             serializer_type = next(iter(group.values()))
-            if not isinstance(serializer_type, type) or not issubclass(serializer_type, Serializer):
-                raise TypeError(f'Uh oh, serializers bad: {serializer_type}')
+            serializer_type = cast(type[Serializer], serializer_type)
             all_attrs.append(next(iter(group.keys())))
             serializer = serializer_type(byte_order)
             slice_stop = slice_start + 1
-        else:
-            raise RuntimeError(f'Uh oh, serializers bad: {group!r}')
         serializers[serializer] = slice(slice_start, slice_stop)
     # Check if we need a compound serializer:
     if len(serializers) == 1:
@@ -200,6 +211,10 @@ class Structured(metaclass=StructuredMeta):
         # TODO: Create the init function on the fly (ala dataclass) so we can
         # leverage python's error checking for argument names, etc.
         attrs_values = dict(zip(self.attrs, args))
+        given = len(args)
+        expected = len(self.attrs)
+        if given > expected:
+            raise TypeError(f'{type(self).__qualname__}() takes {expected} positional arguments but {given} were given')
         duplicates = set(attrs_values.keys()) & set(kwargs.keys())
         if duplicates:
             raise TypeError(f'{duplicates} arguments passed as both positional and keyword.')

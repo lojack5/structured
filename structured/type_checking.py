@@ -6,9 +6,9 @@ from typing import (
 )
 
 if sys.version_info < (3, 10):
-    from typing_extensions import TypeAlias
+    from typing_extensions import TypeAlias, TypeGuard
 else:
-    from typing import TypeAlias
+    from typing import TypeAlias, TypeGuard
 
 
 _T = TypeVar('_T')
