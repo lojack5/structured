@@ -2,19 +2,19 @@ import sys
 import typing
 from typing import (
     Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union,
-    get_origin, get_type_hints, runtime_checkable,
+    get_origin, get_type_hints, runtime_checkable, NoReturn, cast,
 )
 
 if sys.version_info < (3, 10):
-    from typing_extensions import TypeAlias
+    from typing_extensions import TypeAlias, TypeGuard
 else:
-    from typing import TypeAlias
+    from typing import TypeAlias, TypeGuard
 
 
 _T = TypeVar('_T')
 
 
-def is_classvar(annotation: Any) -> bool:
+def isclassvar(annotation: Any) -> bool:
     """Determine if a type annotations is for a class variable.
 
     :param annotation: Fully resolved type annotation to test.
@@ -38,6 +38,7 @@ if typing.TYPE_CHECKING:
     import mmap
     import pickle
     import sys
+    import io
     from typing import Any
 
     ReadOnlyBuffer: TypeAlias = bytes
@@ -47,12 +48,13 @@ if typing.TYPE_CHECKING:
     # the most common stdlib buffer classes in a Union.
     if sys.version_info >= (3, 8):
         WritableBuffer: TypeAlias = Union[
-            bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData,
-            pickle.PickleBuffer
+            bytearray, memoryview, array.array[Any], mmap.mmap,
+            # ctypes._CData, pickle.PickleBuffer
         ]
     else:
         WritableBuffer: TypeAlias = Union[  # type: ignore
-            bytearray, memoryview, array.array[Any], mmap.mmap, ctypes._CData
+            bytearray, memoryview, array.array[Any], mmap.mmap,
+            # ctypes._CData
         ]
     ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WritableBuffer]
 else:
