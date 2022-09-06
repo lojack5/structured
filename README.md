@@ -157,16 +157,19 @@ class Derived(Base, byte_order=ByteOrder.BE, byte_order_mode=ByteOrderMode.OVERR
   hash: uint64
 ```
 
-### Accessing `struct` details.
-Any `Structured` derived class stores a class level `struct` attribute, which is an instance of `struct.Struct`.  So if you need the format string or read size, you can access these attributes:
+### Accessing serialization details.
+Any `Structured` derived class stores a class level `serializer` attribute, which is a `struct.Struct`-like object.  Due to the dynamic nature of some of the advanced types however, `serializer.size` is only guaranteed to be up to date with the most recent `pack_into`, `pack_write`, `unpack`, `unpack_from`, or `unpack_read`.  For `unpack` you can use `len` to get the unpacked size.  In some cases (when all class items are simple format types), `serializer` is actually a subclass of `struct.Struct`, in which case you can access all of the attributes as you would expect:
 ```python
 class MyStruct(Structured):
   a: int32
   b: float32
 
-format_string = MyStruct.struct.format
-format_size = MyStruct.struct.size
+assert isinstance(MyStruct.serializer, struct.Struct)
+format_string = MyStruct.serializer.format
+format_size = MyStruct.serializer.size
 ```
+
+Also provided is `attrs`, a tuple of attribute names handled by the serializer.  You can use this for debugging purposes to verify all of the attributes you expected to be packed/unpacked are actually touched by the class.
 
 ### Packing / Unpacking methods
 `Structured` classes provide a couple of ways to pack and unpack their values:
@@ -176,3 +179,56 @@ format_size = MyStruct.struct.size
  - `Structured.pack()`: Packs the instance's variables, returning `bytes`.
  - `Structured.pack_int(buffer, offset = 0)`: Packs the instance's variables into an object supporting the [buffer protocol](https://docs.python.org/3/c-api/buffer.html)
 
+
+## Advanced types
+Structured also supports a few more complex types that require extra logic to pack and unpack.  These are:
+- `blob`: For unpacking binary blobs whose size is not static, but determined by data just prior to the blob.
+- `array`: For unpacking multiple instances of a single type.  The number to unpack may be static or, like `blob`, determined by data just prior to the array.
+
+
+### `blob`
+`blob`s are very similar to `char`s, however the size is determined at pack/unpack time.  To use this, the length of the blob must be stored just prior to the blob as a `uint8`, `uint16`, `uint32`, or a `uint64`.  For example, if you know your class consists of a `uint32` holding the size of data, followed by that many bytes of data, you could write:
+
+```python
+class MyStruct(Structured):
+  data: blob[uint32]
+```
+
+
+### `array`
+Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of three ways:
+- A static number of items packed continuously.
+- A dynamic number of items packed continuously, preceeded by the number of items packed.
+- A static number of Structured items packed continuously, preceeded by the total size of the items.
+- A dynamic number of Structured items packed continuously, preceeded by the number of items packed.
+- A dynamic number of Structured items packed continuously, preceeded by the number of items as well as the total size of the packed items.
+
+For example, suppose you know there will always be 10 `uint8`s in your object and you want them in an array:
+```python
+class MyStruct(Structured):
+  items: array[10, uint8]
+```
+
+Or if you need to unpack a `uint32` to determine the number of `uint8`s, then immediately unpack those items:
+```python
+class MyStruct(Structured):
+  items: array[uint32, uint8]
+```
+
+For arrays of `Structured` objects, you can optionally also provide a type to unpack, directly after the array length, which represents the packed array size in bytes.
+```python
+class MyItem(Structured):
+  first: int8
+  second: uint16
+
+class MyStruct(Structured):
+  ten_items: array[10, uint32, MyItem]
+  many_items: array[uint32, uint32, MyItem]
+```
+
+Finally, since there are many options for `array`s, you can provide these arguments with special marker classes.  They are provided only to make the code more readable, with one small side benifit: when used, you can provide these arguments in any order.  For example:
+```python
+class MyStruct(Structured):
+  ten_items: array[10, array_type[MyItem], size_check[uint32]]
+  many_items: array[array_size[uint32], size_check[uint32], MyItem]
+```
