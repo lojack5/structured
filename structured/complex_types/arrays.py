@@ -26,6 +26,7 @@ from ..type_checking import (
 )
 
 
+_SizeTypes = (uint8, uint16, uint32, uint64)        # py 3.9 isinstance
 SizeTypes = Union[uint8, uint16, uint32, uint64]
 
 
@@ -128,7 +129,7 @@ class array(list, requires_indexing):
         if isinstance(count, int):
             if count <= 0:
                 cls.error(ValueError, 'count must be positive')
-        elif not isinstance(count, type) or not issubclass(count, SizeTypes):
+        elif not isinstance(count, type) or not issubclass(count, _SizeTypes):
             cls.error(TypeError, 'count must be an integer or a uint* type.')
 
     @classmethod
@@ -155,7 +156,7 @@ class array(list, requires_indexing):
 
         :param check: the size check type for the array
         """
-        if not isinstance(check, type) or not issubclass(check, SizeTypes):
+        if not isinstance(check, type) or not issubclass(check, _SizeTypes):
             cls.error(TypeError, 'size check must be a uint* type')
 
     @classmethod

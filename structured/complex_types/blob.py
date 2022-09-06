@@ -10,6 +10,8 @@ from ..basic_types import *
 from ..type_checking import Union
 
 
+# py 3.9: Cannot use Union[] in isinstance/issubclass
+_SizeTypes = (uint8, uint16, uint32, uint64)
 SizeTypes = Union[uint8, uint16, uint32, uint64]
 CountTypes = Union[type[SizeTypes], int]
 
@@ -33,7 +35,7 @@ class blob(bytes, requires_indexing):
         :param count: The format_type used to store the size of the binary blob.
         :return: The blob specialization.
         """
-        if isinstance(count, type) and issubclass(count, SizeTypes):
+        if isinstance(count, type) and issubclass(count, _SizeTypes):
             _blob = cls.prefixed_blob(count)
         elif isinstance(count, int):
             return char[count]
