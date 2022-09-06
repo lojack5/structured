@@ -5,12 +5,12 @@ from __future__ import annotations
 from functools import partial
 
 __all__ = [
-    'size_check',
+    'array_size', 'size_check', 'array_type',
     'array',
 ]
 
 import io
-from itertools import repeat
+from itertools import chain, repeat
 
 from ..base_types import (
     Serializer, StructSerializer, format_type, requires_indexing, struct_cache,
@@ -28,14 +28,11 @@ from ..type_checking import (
 SizeTypes = Union[uint8, uint16, uint32, uint64]
 
 
-class size_check(container):
-    def check(self, wrapped):
-        if wrapped is not None:
-            if (not isinstance(wrapped, type) or
-                not issubclass(wrapped, SizeTypes)
-                ):
-                raise TypeError('Size check must be None or a uint* type')
-
+# Containers to allow optional more verbose supplying of array
+# arguments, in any order.
+class size_check(container): pass
+class array_size(container): pass
+class array_type(container): pass
 
 
 class array(list, requires_indexing):
@@ -49,64 +46,78 @@ class array(list, requires_indexing):
     def error(cls, exc_type: type[Exception], msg: str) -> NoReturn:
         raise exc_type(f'{cls.__qualname__}[] {msg}')
 
-    def __class_getitem__(cls, key) -> type[Serializer]:
-        if not isinstance(key, tuple):
-            key = (key, )
-        if len(key) == 3:
-            count, check, obj_type = key
-        elif len(key) == 2:
-            count, obj_type = key
-            check = None
-        else:
-            cls.error(
-                TypeError,
-                f'requires 2-3 arguments, but {len(key)} were given',
-            )
-        # Size check type, type checking performed in the class
-        if not isinstance(check, size_check):
-            check = size_check(check)
-        # object type
-        if (not isinstance(obj_type, type) or
-            not issubclass(obj_type, (format_type, Structured))):
-            cls.error(
-                TypeError,
-                'object type must be a format_type or a Structured class'
-            )
-        # format_type arrays don't support size checking
-        if issubclass(obj_type, format_type) and check.wrapped is not None:
-            cls.error(
-                TypeError,
-                'arrays of format_type objects do not support size checks'
-            )
-        # count
+    @classmethod
+    def _process_args(cls, args: Any) -> tuple[tuple, dict[str, Any]]:
+        if not isinstance(args, tuple):
+            args = (args, )
+        final_args = []
+        kwargs = {}
+        for arg in args:
+            for cont_cls in (array_size, size_check, array_type):
+                if isinstance(arg, cont_cls):
+                    if cont_cls.__name__ in kwargs:
+                        cls.error(TypeError, f"argument repeated: '{cont_cls.__name__}'")
+                    kwargs[cont_cls.__name__] = container.unwrap(arg)
+                    break
+            else:
+                final_args.append(arg)
+        return tuple(final_args), kwargs
+
+    def __class_getitem__(cls, args) -> type[Serializer]:
+        args, kwargs = cls._process_args(args)
+        try:
+            return cls._create_2_arg(*args, **kwargs)
+        except TypeError:
+            pass
+        return cls._create_3_arg(*args, **kwargs)
+
+
+    @classmethod
+    def _check_count(cls, count: Union[int, type[SizeTypes]]) -> None:
         if isinstance(count, int):
             if count <= 0:
                 cls.error(ValueError, 'count must be positive')
         elif not isinstance(count, type) or not issubclass(count, SizeTypes):
             cls.error(TypeError, 'count must be an integer or a uint* type.')
 
-        # Dispatch
+    @classmethod
+    def _check_object_type(cls, obj_type: Union[type[format_type], type[Structured]]) -> None:
+        if not isinstance(obj_type, type) or not issubclass(obj_type, (format_type, Structured)):
+            cls.error(TypeError, 'object type must be a format_type or a Structured class')
+
+    @classmethod
+    def _check_size_check(cls, check: type[SizeTypes]) -> None:
+        if not isinstance(check, type) or not issubclass(check, SizeTypes):
+            cls.error(TypeError, 'size check must be a uint* type')
+
+    @classmethod
+    def _create_2_arg(cls, count: Union[int, type[SizeTypes]], obj_type: Union[type[format_type], type[Structured]]) -> type[Serializer]:
+        cls._check_count(count)
+        cls._check_object_type(obj_type)
         if isinstance(count, int):
             if issubclass(obj_type, format_type):
                 array_cls = format_array(count, obj_type)
             else:
-                if check.wrapped is None:
-                    array_cls = structured_array(count, obj_type)
-                else:
-                    array_cls = checked_structured_array(
-                        count, check.wrapped, obj_type
-                    )
+                array_cls = structured_array(count, obj_type)
         else:
             if issubclass(obj_type, format_type):
                 array_cls = dynamic_format_array(count, obj_type)
             else:
-                if check.wrapped is None:
-                    array_cls = dynamic_structured_array(count, obj_type)
-                else:
-                    array_cls = dynamic_checked_structured_array(
-                        count, check.wrapped, obj_type
-                    )
-        return specialized(cls, key)(array_cls)
+                array_cls = dynamic_structured_array(count, obj_type)
+        return specialized(cls, count, obj_type)(array_cls)
+
+    @classmethod
+    def _create_3_arg(cls, array_size: Union[int, type[SizeTypes]], size_check: type[SizeTypes], array_type: Union[type[format_type], type[Structured]]) -> type[Serializer]:
+        cls._check_count(array_size)
+        cls._check_object_type(array_type)
+        cls._check_size_check(size_check)
+        if issubclass(array_type, format_type):
+            cls.error(TypeError, 'size check only supported for arrays of Structured objects.')
+        if isinstance(array_size, int):
+            array_cls = checked_structured_array(array_size, size_check, array_type)
+        else:
+            array_cls = dynamic_checked_structured_array(array_size, size_check, array_type)
+        return specialized(cls, array_size, size_check, array_type)(array_cls)
 
 
 class _format_array(Serializer):
@@ -121,8 +132,14 @@ class _format_array(Serializer):
         self.serializer = struct_cache(fmt, actions)
         self.size = self.serializer.size
 
+    def _check_arr(self, values: tuple) -> list:
+        arr = values[0]
+        if (count := len(arr)) != self.count:
+            raise ValueError(f'array length must be {self.count} to pack, got {count}')
+        return arr
+
     def pack(self, *values: Any) -> bytes:
-        return self.serializer.pack(*values[0])
+        return self.serializer.pack(*self._check_arr(values))
 
     def pack_into(
             self,
@@ -130,10 +147,10 @@ class _format_array(Serializer):
             offset: int,
             *values: Any,
         ) -> None:
-        self.serializer.pack_into(buffer, offset, *values[0])
+        self.serializer.pack_into(buffer, offset, *self._check_arr(values))
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
-        writable.write(self.serializer.pack(*values[0]))
+        self.serializer.pack_write(writable, *self._check_arr(values))
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         return list(self.serializer.unpack(buffer[:self.size])),
@@ -167,15 +184,17 @@ class _dynamic_format_array(Serializer):
         self.header = struct_cache(fmt)
         self.byte_order = byte_order.value
 
-    def _pack(self, values: tuple[Any, ...], packer, *packer_args):
+    def _arr_count_st(self, values: tuple[Any, ...]) -> tuple[list, int, StructSerializer]:
         arr = values[0]
-        fmt = f'{self.byte_order}{len(arr)}{self.count_type.format}'
+        count = len(arr)
+        fmt = f'{self.byte_order}{self.count_type.format}{count}{self.obj_type.format}'
         st = struct_cache(fmt)
         self.size = st.size
-        return packer(*packer_args, *arr)
+        return arr, count, st
 
     def pack(self, *values: Any) -> bytes:
-        return self._pack(values, StructSerializer.pack)
+        arr, count, st = self._arr_count_st(values)
+        return st.pack(count, *arr)
 
     def pack_into(
             self,
@@ -183,34 +202,31 @@ class _dynamic_format_array(Serializer):
             offset: int,
             *values: Any,
         ) -> None:
-        self._pack(values, StructSerializer.pack_into, buffer, offset)
+        arr, count, st = self._arr_count_st(values)
+        st.pack_into(buffer, offset, count, *arr)
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
-        self._pack(values, StructSerializer.pack_write, writable)
+        arr, count, st = self._arr_count_st(values)
+        st.pack_write(writable, count, *arr)
 
-    def _unpack_count(self, unpacker: str, *count_args):
-        # user getattr, since st might be either a StructSerializer or a
-        # StructActionSerializer
-        up = getattr(self.header, unpacker)
-        count = up(*count_args)[0]
+    def _st(self, count: int) -> StructSerializer:
         actions = tuple(repeat(self.count_type.unpack_action, count))
-        fmt = f'{self.byte_order}{count}{self.count_type.format}'
-        st = struct_cache(fmt, actions)
-        self.size = self.header.size + st.size
-        return st
+        fmt = f'{self.byte_order}{count}{self.obj_type.format}'
+        return struct_cache(fmt, actions)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
-        data_start = self.header.size
-        st = self._unpack_count('unpack', buffer[:data_start])
-        return list(st.unpack(buffer[data_start:data_start+st.size])),
+        count = self.header.unpack(buffer)[0]
+        st = self._st(count)
+        return list(st.unpack(buffer[self.header.size:])),
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
-        st = self._unpack_count('unpack_from', buffer, offset)
-        offset += self.header.size
-        return list(st.unpack_from(buffer, offset)),
+        count = self.header.unpack_from(buffer, offset)[0]
+        st = self._st(count)
+        return list(st.unpack_from(buffer, offset + self.header.size)),
 
     def unpack_read(self, readable: SupportsRead) -> tuple:
-        st = self._unpack_count('unpack_read', readable)
+        count = self.header.unpack_read(readable)[0]
+        st = self._st(count)
         return list(st.unpack_read(readable)),
 
 
@@ -234,9 +250,9 @@ class _header:
         self.header = struct_cache(fmt, byte_order=byte_order)
         self.size = 0
     def pack_header(self, packer, count, data_size) -> None:
-        pass
+        pass    # pragma: no cover
     def unpack_header(self, unpacker) -> tuple[int, int]:
-        raise NotImplementedError
+        raise NotImplementedError   # pragma: no cover
     def check_size(self, expected_size: int):
         pass
 
@@ -310,6 +326,8 @@ class _structured_array(_header, Serializer):
     def pack_into(self, buffer: WritableBuffer, offset: int, *values) -> None:
         arr: list[Structured] = values[0]
         count = len(arr)
+        # Not necessary here, but do it for the error check on array size
+        self.pack_header(partial(self.header.pack_into, buffer, offset), count, 0)
         self.size = self.header.size
         for item in arr:
             item.pack_into(buffer, offset + self.size)
