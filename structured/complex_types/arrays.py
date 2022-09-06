@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 import io
-from itertools import chain, repeat
+from itertools import repeat
 
 from ..base_types import (
     Serializer, StructSerializer, format_type, requires_indexing, struct_cache,
@@ -56,7 +56,10 @@ class array(list, requires_indexing):
             for cont_cls in (array_size, size_check, array_type):
                 if isinstance(arg, cont_cls):
                     if cont_cls.__name__ in kwargs:
-                        cls.error(TypeError, f"argument repeated: '{cont_cls.__name__}'")
+                        cls.error(
+                            TypeError,
+                            f"argument repeated: '{cont_cls.__name__}'"
+                        )
                     kwargs[cont_cls.__name__] = container.unwrap(arg)
                     break
             else:
@@ -81,9 +84,18 @@ class array(list, requires_indexing):
             cls.error(TypeError, 'count must be an integer or a uint* type.')
 
     @classmethod
-    def _check_object_type(cls, obj_type: Union[type[format_type], type[Structured]]) -> None:
-        if not isinstance(obj_type, type) or not issubclass(obj_type, (format_type, Structured)):
-            cls.error(TypeError, 'object type must be a format_type or a Structured class')
+    def _check_object_type(
+            cls,
+            obj_type: Union[type[format_type],
+            type[Structured]],
+        ) -> None:
+        if (not isinstance(obj_type, type) or
+            not issubclass(obj_type, (format_type, Structured))
+        ):
+            cls.error(
+                TypeError,
+                'object type must be a format_type or a Structured class'
+            )
 
     @classmethod
     def _check_size_check(cls, check: type[SizeTypes]) -> None:
@@ -91,7 +103,12 @@ class array(list, requires_indexing):
             cls.error(TypeError, 'size check must be a uint* type')
 
     @classmethod
-    def _create_2_arg(cls, count: Union[int, type[SizeTypes]], obj_type: Union[type[format_type], type[Structured]]) -> type[Serializer]:
+    def _create_2_arg(
+            cls,
+            count: Union[int, type[SizeTypes]],
+            obj_type: Union[type[format_type],
+            type[Structured]],
+        ) -> type[Serializer]:
         cls._check_count(count)
         cls._check_object_type(obj_type)
         if isinstance(count, int):
@@ -107,16 +124,28 @@ class array(list, requires_indexing):
         return specialized(cls, count, obj_type)(array_cls)
 
     @classmethod
-    def _create_3_arg(cls, array_size: Union[int, type[SizeTypes]], size_check: type[SizeTypes], array_type: Union[type[format_type], type[Structured]]) -> type[Serializer]:
+    def _create_3_arg(
+            cls,
+            array_size: Union[int, type[SizeTypes]],
+            size_check: type[SizeTypes],
+            array_type: Union[type[format_type], type[Structured]],
+        ) -> type[Serializer]:
         cls._check_count(array_size)
         cls._check_object_type(array_type)
         cls._check_size_check(size_check)
         if issubclass(array_type, format_type):
-            cls.error(TypeError, 'size check only supported for arrays of Structured objects.')
+            cls.error(
+                TypeError,
+                'size check only supported for arrays of Structured objects.'
+            )
         if isinstance(array_size, int):
-            array_cls = checked_structured_array(array_size, size_check, array_type)
+            array_cls = checked_structured_array(
+                array_size, size_check, array_type
+            )
         else:
-            array_cls = dynamic_checked_structured_array(array_size, size_check, array_type)
+            array_cls = dynamic_checked_structured_array(
+                array_size, size_check, array_type
+            )
         return specialized(cls, array_size, size_check, array_type)(array_cls)
 
 
@@ -135,7 +164,9 @@ class _format_array(Serializer):
     def _check_arr(self, values: tuple) -> list:
         arr = values[0]
         if (count := len(arr)) != self.count:
-            raise ValueError(f'array length must be {self.count} to pack, got {count}')
+            raise ValueError(
+                f'array length must be {self.count} to pack, got {count}'
+            )
         return arr
 
     def pack(self, *values: Any) -> bytes:
@@ -184,10 +215,14 @@ class _dynamic_format_array(Serializer):
         self.header = struct_cache(fmt)
         self.byte_order = byte_order.value
 
-    def _arr_count_st(self, values: tuple[Any, ...]) -> tuple[list, int, StructSerializer]:
+    def _arr_count_st(
+            self,
+            values: tuple[Any, ...],
+        ) -> tuple[list, int, StructSerializer]:
         arr = values[0]
         count = len(arr)
-        fmt = f'{self.byte_order}{self.count_type.format}{count}{self.obj_type.format}'
+        fmt = (f'{self.byte_order}{self.count_type.format}{count}'
+               f'{self.obj_type.format}')
         st = struct_cache(fmt)
         self.size = st.size
         return arr, count, st
@@ -327,13 +362,17 @@ class _structured_array(_header, Serializer):
         arr: list[Structured] = values[0]
         count = len(arr)
         # Not necessary here, but do it for the error check on array size
-        self.pack_header(partial(self.header.pack_into, buffer, offset), count, 0)
+        self.pack_header(
+            partial(self.header.pack_into, buffer, offset), count, 0
+        )
         self.size = self.header.size
         for item in arr:
             item.pack_into(buffer, offset + self.size)
             self.size += item.serializer.size
         data_size = self.size - self.header.size
-        self.pack_header(partial(self.header.pack_into, buffer, offset), count, data_size)
+        self.pack_header(
+            partial(self.header.pack_into, buffer, offset), count, data_size
+        )
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
         arr: list[Structured] = values[0]
@@ -393,7 +432,10 @@ class _structured_array(_header, Serializer):
         )
 
 
-def structured_array(count_val: int, o_type: type[Structured]) -> type[Serializer]:
+def structured_array(
+        count_val: int,
+        o_type: type[Structured],
+    ) -> type[Serializer]:
     class _array(_static_header, _structured_array):
         count: ClassVar[int] = count_val
         obj_type: ClassVar[type[Structured]] = o_type

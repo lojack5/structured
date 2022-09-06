@@ -136,7 +136,12 @@ class Serializer(structured_type):
 
     def pack(self, *values: Any) -> bytes:
         raise NotImplementedError
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+    def pack_into(
+            self,
+            buffer: WritableBuffer,
+            offset: int,
+            *values: Any,
+        ) -> None:
         raise NotImplementedError
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
         raise NotImplementedError
@@ -171,7 +176,11 @@ def apply_actions(unpacker):
 
 
 class StructActionSerializer(StructSerializer):
-    def __init__(self, actions: tuple[Callable[[Any], Any], ...], fmt: str) -> None:
+    def __init__(
+            self,
+            actions: tuple[Callable[[Any], Any], ...],
+            fmt: str,
+        ) -> None:
         super().__init__(fmt)
         self.actions = actions
 
@@ -196,7 +205,12 @@ class CompoundSerializer(Serializer):
                 out.write(serializer.pack(*(values[attr_slice])))
             return out.getvalue()
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+    def pack_into(
+            self,
+            buffer: WritableBuffer,
+            offset: int,
+            *values: Any,
+        ) -> None:
         size = 0
         for serializer, attr_slice in self.serializers.items():
             serializer.pack_into(buffer, offset + size, *(values[attr_slice]))

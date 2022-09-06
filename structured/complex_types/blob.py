@@ -41,7 +41,10 @@ class blob(bytes, requires_indexing):
                 self.count_st = struct_cache(f'{self.byte_order}{count_fmt}')
                 self.size = 0
 
-            def _packer(self, values: tuple[bytes]) -> tuple[StructSerializer, int, bytes]:
+            def _packer(
+                    self,
+                    values: tuple[bytes],
+                ) -> tuple[StructSerializer, int, bytes]:
                 raw_data = values[0]
                 count = len(raw_data)
                 st = struct_cache(f'{self.byte_order}{count_fmt}{count}s')
@@ -52,7 +55,12 @@ class blob(bytes, requires_indexing):
                 st, count, raw_data = self._packer(values)
                 return st.pack(count, raw_data)
 
-            def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+            def pack_into(
+                    self,
+                    buffer: WritableBuffer,
+                    offset: int,
+                    *values: Any,
+                ) -> None:
                 st, count, raw_data = self._packer(values)
                 st.pack_into(buffer, offset, count, raw_data)
 
@@ -67,10 +75,15 @@ class blob(bytes, requires_indexing):
                 self.size = start + count
                 return raw_data,
 
-            def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
+            def unpack_from(
+                    self,
+                    buffer: ReadableBuffer,
+                    offset: int = 0,
+                ) -> tuple:
                 count = self.count_st.unpack_from(buffer, offset)[0]
                 size = self.count_st.size
-                raw_data = struct_cache(f'{count}s').unpack_from(buffer, offset + size)[0]
+                st = struct_cache(f'{count}s')
+                raw_data = st.unpack_from(buffer, offset + size)[0]
                 self.size = size + count
                 return raw_data,
 

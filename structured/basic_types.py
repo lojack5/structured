@@ -122,7 +122,9 @@ class Formatted(format_type):
         ) -> type[Formatted]:
         # Error checking
         if not issubclass(key, format_type):
-            raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
+            raise TypeError(
+                f'Formatted key must be a format_type, got {key!r}.'
+            )
         if cls._types is Formatted._types:
             # Default, just allow any format type
             fmt = key.format

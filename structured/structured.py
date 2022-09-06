@@ -44,7 +44,9 @@ def filter_typehints(typehints: dict[str, Any]) -> dict[str, type[_Annotation]]:
     }
 
 
-def split_typehints(typehints: dict[str, type[_Annotation]]) -> list[dict[str, type[_Annotation]]]:
+def split_typehints(
+        typehints: dict[str, type[_Annotation]],
+    ) -> list[dict[str, type[_Annotation]]]:
     split: list[dict[str, type[_Annotation]]] = []
 
     current_group = {}
@@ -64,8 +66,13 @@ def split_typehints(typehints: dict[str, type[_Annotation]]) -> list[dict[str, t
     return split
 
 
-def create_struct(typehints: dict[str, type[format_type]], byte_order: ByteOrder) -> tuple[StructSerializer, tuple[str, ...]]:
-    fmt = reduce(fold_overlaps, (var_type.format for var_type in typehints.values()))
+def create_struct(
+        typehints: dict[str, type[format_type]],
+        byte_order: ByteOrder,
+    ) -> tuple[StructSerializer, tuple[str, ...]]:
+    fmt = reduce(fold_overlaps,
+                 (var_type.format for var_type in typehints.values())
+    )
     attr_actions = {
         attr: attr_type.unpack_action
         for attr, attr_type in typehints.items()
@@ -77,7 +84,10 @@ def create_struct(typehints: dict[str, type[format_type]], byte_order: ByteOrder
     return st, attrs
 
 
-def create_serializer(typehints: dict[str, Any], byte_order: ByteOrder) -> tuple[Serializer, tuple[str, ...]]:
+def create_serializer(
+        typehints: dict[str, Any],
+        byte_order: ByteOrder,
+    ) -> tuple[Serializer, tuple[str, ...]]:
     applicable_hints = filter_typehints(typehints)
     hint_groups = split_typehints(applicable_hints)
     all_attrs: list[str] = []
@@ -214,10 +224,15 @@ class Structured(metaclass=StructuredMeta):
         given = len(args)
         expected = len(self.attrs)
         if given > expected:
-            raise TypeError(f'{type(self).__qualname__}() takes {expected} positional arguments but {given} were given')
+            raise TypeError(
+                f'{type(self).__qualname__}() takes {expected} positional '
+                f'arguments but {given} were given'
+            )
         duplicates = set(attrs_values.keys()) & set(kwargs.keys())
         if duplicates:
-            raise TypeError(f'{duplicates} arguments passed as both positional and keyword.')
+            raise TypeError(
+                f'{duplicates} arguments passed as both positional and keyword.'
+            )
         attrs_values |= kwargs
         present = set(attrs_values.keys())
         if (missing := (attr_set := set(self.attrs)) - present):
@@ -244,7 +259,8 @@ class Structured(metaclass=StructuredMeta):
 
         :param readable: readable file-like object.
         """
-        for attr, value in zip(self.attrs, self.serializer.unpack_read(readable)):
+        for attr, value in zip(self.attrs,
+                               self.serializer.unpack_read(readable)):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -255,12 +271,15 @@ class Structured(metaclass=StructuredMeta):
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zip(self.attrs, self.serializer.unpack_from(buffer, offset)):
+        for attr, value in zip(self.attrs,
+                               self.serializer.unpack_from(buffer, offset)):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self.serializer.pack(*(getattr(self, attr) for attr in self.attrs))
+        return self.serializer.pack(
+            *(getattr(self, attr) for attr in self.attrs)
+        )
 
     def pack_write(self, writable: SupportsWrite) -> None:
         """Pack the class's values according to the format string, then write
@@ -268,7 +287,10 @@ class Structured(metaclass=StructuredMeta):
 
         :param writable: writable file-like object.
         """
-        self.serializer.pack_write(writable, *(getattr(self, attr) for attr in self.attrs))
+        self.serializer.pack_write(
+            writable,
+            *(getattr(self, attr) for attr in self.attrs)
+        )
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
@@ -277,14 +299,22 @@ class Structured(metaclass=StructuredMeta):
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self.serializer.pack_into(buffer, offset, *(getattr(self, attr) for attr, in self.attrs))
+        self.serializer.pack_into(
+            buffer,
+            offset,
+            *(getattr(self, attr) for attr, in self.attrs)
+        )
 
     @classmethod
     def create_unpack(cls: type[_C], buffer: ReadableBuffer) -> _C:
         return cls(*cls.serializer.unpack(buffer))
 
     @classmethod
-    def create_unpack_from(cls: type[_C], buffer: ReadableBuffer, offset: int = 0) -> _C:
+    def create_unpack_from(
+            cls: type[_C],
+            buffer: ReadableBuffer,
+            offset: int = 0
+        ) -> _C:
         return cls(*cls.serializer.unpack_from(buffer, offset))
 
     @classmethod
