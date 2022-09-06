@@ -1,9 +1,4 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import TypeVar
-
-__author__ = 'lojack5'
-__version__ = '1.0'
 
 __all__ = [
     'Structured',
@@ -17,7 +12,7 @@ from .base_types import *
 from .basic_types import pad
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
-    WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union,
+    WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
 )
 
 
