@@ -297,7 +297,7 @@ class Structured(metaclass=StructuredMeta):
         self.serializer.pack_into(
             buffer,
             offset,
-            *(getattr(self, attr) for attr, in self.attrs)
+            *(getattr(self, attr) for attr in self.attrs)
         )
 
     @classmethod

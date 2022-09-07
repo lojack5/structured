@@ -59,6 +59,72 @@ class TesteChar:
             assert Base.create_unpack_read(stream) == target_obj
 
 
+    def test_net_errors(self) -> None:
+        class Base(Structured):
+            a: char[NET]
+        error_length = 0x8000
+
+        error_str = b'a' * error_length
+        error_obj = Base(error_str)
+        error_data = struct.pack('H', error_length)
+        error_size_mark = 0x80 | error_length & 0x7F | (error_length & 0xFF80) << 1
+        ## NOTE: Not sure if it's even possible to encode a length marker that
+        ## would fail decoding.  Will have to dig into and reverse engineer
+        ## bit manipulation to find out.
+        #error_data = struct.pack('H', error_size_mark)
+
+        with pytest.raises(ValueError):
+            error_obj.pack()
+        #with pytest.raises(ValueError):
+        #    Base.create_unpack(error_data)
+
+
+    def test_net(self) -> None:
+        # NOTE: Code for encoding/decoding the string length is dubious.
+        # Source is old Wrye Base code for reading/writing OMODs, but I've
+        # and it seems to work properly, so these tests just exercise the
+        # code lines, but don't verify their accuracy.
+        class Base(Structured):
+            short: char[NET]
+            long: char[NET]
+        assert isinstance(Base.serializer, structured.CompoundSerializer)
+        assert tuple(Base.serializer.serializers.values()) == (
+            slice(0, 1),
+            slice(1, 2),
+        )
+        assert Base.attrs == ('short', 'long')
+        target_obj = Base(b'Hello', b'a'*200)
+
+        st = struct.Struct('B5s')
+        partial_target = st.pack(5, b'Hello')
+        partial_size = st.size
+        target_size = 1 + 5 + 2 + 200
+
+        # pack/unpack
+        packed_data = target_obj.pack()
+        packed_size = len(packed_data)
+        assert packed_data[:partial_size] == partial_target
+        assert Base.create_unpack(packed_data) == target_obj
+        assert packed_size == target_size
+
+        # from/into
+        buffer = bytearray(packed_size)
+        target_obj.pack_into(buffer)
+        assert target_obj.serializer.size == packed_size
+        assert bytes(buffer) == packed_data
+        assert bytes(buffer)[:partial_size] == partial_target
+        assert Base.create_unpack_from(buffer) == target_obj
+
+        # read/write
+        with io.BytesIO() as stream:
+            target_obj.pack_write(stream)
+            assert target_obj.serializer.size == packed_size
+            assert stream.getvalue() == packed_data
+            assert stream.getvalue()[:partial_size] == partial_target
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == target_obj
+
+
 class TestUnicode:
     def test_default(self) -> None:
         target_str = '你好'
