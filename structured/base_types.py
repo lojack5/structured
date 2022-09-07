@@ -158,9 +158,13 @@ class StructSerializer(struct.Struct, Serializer):
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         return super().unpack(buffer[:self.size])
     def unpack_read(self, readable: SupportsRead) -> tuple:
-        return self.unpack(readable.read(self.size))
+        # NOTE: use super-class's unpack to not interfere with custom
+        # logic in subclasses
+        return super().unpack(readable.read(self.size))
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
-        writable.write(self.pack(*values))
+        # NOTE: Call the super-class's pack, so we don't interfere with
+        # any custom logic in pack_write for subclasses
+        writable.write(super().pack(*values))
 
 
 def apply_actions(unpacker):
@@ -186,7 +190,7 @@ class StructActionSerializer(StructSerializer):
 
     unpack = apply_actions(StructSerializer.unpack)
     unpack_from = apply_actions(StructSerializer.unpack_from)
-    # Don't apply the modifier to unpack_read, as this uses the modified unpack
+    unpack_read = apply_actions(StructSerializer.unpack_read)
 
 
 SerializerInfo = dict[Serializer, slice]
