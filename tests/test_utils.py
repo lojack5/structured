@@ -1,8 +1,6 @@
-import structured
+from structured import *
 
 
 def test_container() -> None:
-    assert structured.utils.container.unwrap(1) == 1    # type: ignore
-
-    wrapped = structured.utils.container[(1,)]           # type: ignore
-    assert wrapped.unwrap(wrapped) == 1
+    assert size_check.unwrap(size_check[int]) is int
+    assert size_check.unwrap(size_check[(1,)]) == (1,)

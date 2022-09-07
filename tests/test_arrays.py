@@ -45,8 +45,8 @@ def test_arbitary_arg_order():
 
 def test_static_format():
     class Static(Structured):
-        a: int          = factory(int32)
-        b: list[int]    = factory(array[5, uint32])
+        a: int          = serialized(int32)
+        b: list[int]    = serialized(array[5, uint32])
     target_obj = Static(42, [1, 2, 3, 4, 5])
 
     st = struct.Struct('i5I')
@@ -120,7 +120,7 @@ def test_static_format_action():
 
 def test_static_structured():
     class Compound(Structured):
-        a: list[Item] = factory(array[3, Item])
+        a: list[Item] = serialized(array[3, Item])
 
     target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
     with io.BytesIO() as out:

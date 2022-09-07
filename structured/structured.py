@@ -3,7 +3,7 @@ from __future__ import annotations
 __all__ = [
     'Structured',
     'ByteOrder', 'ByteOrderMode',
-    'factory',
+    'serialized',
 ]
 
 from functools import reduce
@@ -33,12 +33,12 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
     return False
 
 
-def factory(kind: type[structured_type]) -> Any:
+def serialized(kind: type[structured_type]) -> Any:
     """Type erasure for class definitions, allowing for linters to pick up the
     correct final type.  For example:
 
     class MyStruct(Structured):
-        items: list[int] = factory(array[4, int32])
+        items: list[int] = serialized(array[4, int32])
     """
     return kind
 
@@ -53,8 +53,6 @@ def filter_typehints(typehints: dict[str, Any], classdict: dict[str, Any]) -> di
         if validate_typehint(attr_type):
             filtered[attr] = attr_type
     return filtered
-
-
 
 
 def split_typehints(

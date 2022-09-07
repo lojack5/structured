@@ -37,7 +37,7 @@ def specialized(base_cls: type, *args: Any) -> Callable[[type[_T]], type[_T]]:
     :return: The class with described modifications.
     """
     def wrapper(cls: type[_T]) -> type[_T]:
-        cls.__class_getitem__ = __error_getitem__   # type: ignore
+        setattr(cls, '__class_getitem__', __error_getitem__)
         qualname = ', '.join((
             getattr(k, '__qualname__', f'{k}')
             for k in args

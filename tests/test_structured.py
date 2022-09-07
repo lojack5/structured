@@ -149,7 +149,7 @@ class TestStructured:
 
     def test_unpack_read(self) -> None:
         class Base(Structured):
-            a: int  = factory(int8)
+            a: int  = serialized(int8)
         b = Base(42)
         data = b.pack()
         with io.BytesIO(data) as stream:
@@ -233,6 +233,7 @@ class TestStructured:
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
+    # Linter ignores due to 'fold_overlaps' not being in __all__
     assert structured.fold_overlaps('b', '') == 'b'          # type: ignore
     assert structured.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore
     assert structured.fold_overlaps('', 'b') == 'b'          # type: ignore

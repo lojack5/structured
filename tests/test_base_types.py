@@ -108,6 +108,7 @@ class TestFormatted:
 
     def test_errors(self) -> None:
         class Error1(Formatted):
+            # Purposfully setting an incorrect type for _types, hence the ignore
             _types = frozenset({int})   # type: ignore
         with pytest.raises(TypeError):
             # Errors due to not having `int8` in `_types`
