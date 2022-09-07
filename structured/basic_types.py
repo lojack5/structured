@@ -11,7 +11,7 @@ __all__ = [
     'int32', 'uint32',
     'int64', 'uint64',
     'float16', 'float32', 'float64',
-    'char', 'pascal',
+    'pascal',
     'Formatted',
 ]
 
@@ -90,11 +90,8 @@ class float64(float, format_type):
     format: ClassVar[str] = 'd'
 
 
-class char(str, counted):
-    """String format specifier (bytes in Python).  See 's' in the stdlib struct
-    documentation for specific details.
-    """
-    format: ClassVar[str] = 's'
+# NOTE: char moved to complex_types/unicode.py, since it can optionally
+# be created with a dynamic size.
 
 
 class pascal(str, counted):

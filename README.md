@@ -182,18 +182,28 @@ Also provided is `attrs`, a tuple of attribute names handled by the serializer. 
 
 ## Advanced types
 Structured also supports a few more complex types that require extra logic to pack and unpack.  These are:
-- `blob`: For unpacking binary blobs whose size is not static, but determined by data just prior to the blob.
+- `char`: For unpacking binary blobs whose size is not static, but determined by data just prior to the blob (yes, it's also a basic type).
+- `unicode`: For strings, automatically encoding for packing and decoding for unpacking.
 - `array`: For unpacking multiple instances of a single type.  The number to unpack may be static or, like `blob`, determined by data just prior to the array.
 
 
-### `blob`
-`blob`s are very similar to `char`s, however the size is determined at pack/unpack time.  To use this, the length of the blob must be stored just prior to the blob as a `uint8`, `uint16`, `uint32`, or a `uint64`.  For example, if you know your class consists of a `uint32` holding the size of data, followed by that many bytes of data, you could write:
+### `char`
+When `char` is used with one of `uint8`, `uint16`, `uint32` or `uint16` it becomes and advanced type.  The length of bytes to unpack is determined by the type specified.  This can be used to represent raw binary blobs of data that you do not with to decode further.  This is very similar to `pascal`, but allows for larger size indicators before the bytes.:
 
 ```python
 class MyStruct(Structured):
-  data: blob[uint32]
+  data: char[uint32]
 ```
 
+### `unicode`
+`unicode` is identical to `char` with the exception of an optional `encoding` argument, which defaults to `'utf8'`.  The size for `unicode` represents the size as bytes, not the length of the decoded string.  If you need custom encoding/decoding not provided with the built int python encodings, you can create a custom `EncoderDecoder` subclass, implementing its class methods `encode` and `decode`.
+
+```python
+class MyStruct(Structured):
+  name: unicode[5]
+  description: unicode[uint16]
+  other: unicode[uint16, 'utf16']
+```
 
 ### `array`
 Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of three ways:
