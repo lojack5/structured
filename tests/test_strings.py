@@ -17,7 +17,7 @@ def test_errors() -> None:
 
 class TesteChar:
     def test_static(self) -> None:
-        assert issubclass(char[13], char)
+        assert issubclass(char[13], structured.format_type)
         assert char[13].format == '13s'
 
     def test_dynamic(self) -> None:
