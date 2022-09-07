@@ -242,3 +242,43 @@ class MyStruct(Structured):
   ten_items: array[10, array_type[MyItem], size_check[uint32]]
   many_items: array[array_size[uint32], size_check[uint32], MyItem]
 ```
+
+
+## Notes of type checkers / IDEs
+For the most part, `structured` should work with type checkers set to basic levels.  The annotated types are subclasses of their python equivalents:
+- `int*` and `uint*` are subclasses of `int`.
+- `float*` are subclasses of `float`.
+- `bool8` is a subclass of `int`.  This is because `bool` cannot be subclassed.
+- `char` and `pascal` are subclasses of `bytes`.
+- `array` is a subclass of `list`.
+- `unicode` is a subclass of `str`.
+
+The trick here is that all of these types are not actually unpacked as their type.  For example an attribute marked as `array[4, int8]` is unpacked as a `list[int]`.  So for the most part, type checkers will correctly identify what methods are available to each type.
+
+The exception is assigning values to attributes, and iterating over `array`s.  For example:
+```python
+class MyStruct(Structured):
+  a: int8
+
+o = MyStruct(1)
+o.a = 2
+```
+Most type checkers will warn on setting `o.a = 2`, as `int` and `int8` are incompatible here.  Similarly,
+```python
+class MyStruct(Structured):
+  a: array[2, int8]
+o = MyStruct([1, 2])
+
+sum = 0
+for i in o.a:
+  sum += i
+```
+Most type checkers will not realize that the iterator `i` is an integer.
+
+One workaround is to use the `serialized` method during class creation.  This allows you to hint the type as it's actual unpacked type, but still inform the `Structured` class how to pack/unpack it:
+```python
+class MyStruct(Structured):
+  a: int = serialized(int8)
+```
+
+No solution is perfect, and any type checker set to a strict level will complain about a lot of code.
