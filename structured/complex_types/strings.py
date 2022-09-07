@@ -22,6 +22,7 @@ from ..type_checking import (
 )
 
 
+_SizeTypes = (uint8, uint16, uint32, uint64)    # py 3.9 isinstance/subclass
 SizeTypes = Union[uint8, uint16, uint32, uint64]
 Encoder = Callable[[str], bytes]
 Decoder = Callable[[bytes], str]
@@ -45,7 +46,7 @@ class char(_char):
     def _create(cls, count: Union[int, type[SizeTypes], type[NET]]) -> type[structured_type]:
         if isinstance(count, int):
             new_cls = _char[count]
-        elif isinstance(count, type) and issubclass(count, SizeTypes):
+        elif isinstance(count, type) and issubclass(count, _SizeTypes):
             new_cls = _dynamic_char[count]
         elif count is NET:
             new_cls = _net_char
@@ -85,7 +86,7 @@ class unicode(str, requires_indexing):
 
         if isinstance(count, int):
             base = _static_char[count]
-        elif isinstance(count, type) and issubclass(count, SizeTypes):
+        elif isinstance(count, type) and issubclass(count, _SizeTypes):
             base = _dynamic_char[count]
         elif count is NET:
             base = _net_char
