@@ -369,10 +369,10 @@ class _net_char(Serializer):
         return struct.unpack_from(f'{count}s', buffer, offset + size)
 
     def unpack_read(self, readable: SupportsRead) -> tuple[bytes]:
-        count_pos = readable.tell()     # type: ignore
+        count_pos = readable.tell()
         count = self.short_len.unpack_read(readable)[0]
         if count >= 128:
-            readable.seek(count_pos)    # type: ignore
+            readable.seek(count_pos)
             count = self.long_len.unpack_read(readable)[0]
             count = self._decode_length(count)
             size = self.long_len.size

@@ -52,6 +52,7 @@ from functools import cache, wraps
 from itertools import chain
 from io import BytesIO
 from enum import Enum
+from typing import TypeAlias, cast
 
 from .utils import specialized
 from .type_checking import (

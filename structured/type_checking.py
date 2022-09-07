@@ -23,13 +23,44 @@ def isclassvar(annotation: Any) -> bool:
 
 
 @runtime_checkable
-class SupportsRead(Protocol):
+class _SupportsRead1(Protocol):
     def read(self, size: Union[int, None] = ...) -> bytes: ...
+
+    def seek(self, offset: int, whence: int = ..., /) -> int: ...
+
+    def tell(self) -> int: ...
 
 
 @runtime_checkable
-class SupportsWrite(Protocol):
+class _SupportsRead2(Protocol):
+    def read(self, size: Union[int, None] = ..., /) -> bytes: ...
+
+    def seek(self, offset: int, whence: int = ..., /) -> int: ...
+
+    def tell(self) -> int: ...
+
+SupportsRead: TypeAlias = Union[_SupportsRead1, _SupportsRead2]
+
+
+@runtime_checkable
+class _SupportsWrite1(Protocol):
     def write(self, data: bytes) -> int: ...
+
+    def seek(self, offset: int, whence: int = ..., /) -> int: ...
+
+    def tell(self) -> int: ...
+
+
+@runtime_checkable
+class _SupportsWrite2(Protocol):
+    def write(self, buffer: 'ReadableBuffer', /) -> int: ...
+
+    def seek(self, offset: int, whence: int = ..., /) -> int: ...
+
+    def tell(self) -> int: ...
+
+
+SupportsWrite: TypeAlias = Union[_SupportsWrite1, _SupportsWrite2]
 
 
 if typing.TYPE_CHECKING:

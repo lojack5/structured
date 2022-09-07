@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     'Structured',
     'ByteOrder', 'ByteOrderMode',
+    'factory',
 ]
 
 from functools import reduce
@@ -21,22 +22,39 @@ _Annotation = Union[format_type, Serializer]
 def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
     if isclassvar(attr_type):
         return False
-    if issubclass(attr_type, requires_indexing):
-        raise TypeError(f'{attr_type.__qualname__} must be specialized')
-    if issubclass(attr_type, structured_type):
-        if issubclass(attr_type, (format_type, Serializer)):
-            return True
-        else:
-            raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
+    if isinstance(attr_type, type):
+        if issubclass(attr_type, requires_indexing):
+            raise TypeError(f'{attr_type.__qualname__} must be specialized')
+        if issubclass(attr_type, structured_type):
+            if issubclass(attr_type, (format_type, Serializer)):
+                return True
+            else:
+                raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
     return False
 
 
-def filter_typehints(typehints: dict[str, Any]) -> dict[str, type[_Annotation]]:
-    return {
+def factory(kind: type[structured_type]) -> Any:
+    """Type erasure for class definitions, allowing for linters to pick up the
+    correct final type.  For example:
+
+    class MyStruct(Structured):
+        items: list[int] = factory(array[4, int32])
+    """
+    return kind
+
+
+def filter_typehints(typehints: dict[str, Any], classdict: dict[str, Any]) -> dict[str, type[_Annotation]]:
+    filtered = {
         attr: attr_type
         for attr, attr_type in typehints.items()
         if validate_typehint(attr_type)
     }
+    for attr, attr_type in classdict.items():
+        if validate_typehint(attr_type):
+            filtered[attr] = attr_type
+    return filtered
+
+
 
 
 def split_typehints(
@@ -81,9 +99,10 @@ def create_struct(
 
 def create_serializer(
         typehints: dict[str, Any],
+        classdict: dict[str, Any],
         byte_order: ByteOrder,
     ) -> tuple[Serializer, tuple[str, ...]]:
-    applicable_hints = filter_typehints(typehints)
+    applicable_hints = filter_typehints(typehints, classdict)
     hint_groups = split_typehints(applicable_hints)
     all_attrs: list[str] = []
     # First, generate struct.Struct objects where necessary
@@ -143,7 +162,7 @@ def fold_overlaps(format1: str, format2: str) -> str:
 
 
 def find_structured_superclass(
-    bases: tuple[type],
+    bases: tuple[type, ...],
 ) -> Optional[type[Structured]]:
     """Find any Structured derived base classes, closes to this class in
     the inheritance tree.
@@ -194,7 +213,7 @@ class StructuredMeta(type):
                     'If this is intentional, use `byte_order_mode=OVERRIDE`.'
                 )
         # Now grab the serializer and associated attributes
-        serializer, attrs = create_serializer(typehints, byte_order)
+        serializer, attrs = create_serializer(typehints, classdict, byte_order)
         # Setup class variables
         classdict['serializer'] = serializer
         classdict['attrs'] = attrs

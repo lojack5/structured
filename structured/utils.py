@@ -1,6 +1,7 @@
 """
 Various utility methods.
 """
+from typing import Generic
 from .type_checking import _T, NoReturn, Any, Callable
 
 
@@ -16,7 +17,7 @@ class container:
             return item.wrapped
         return item
 
-    def __class_getitem__(cls, args):
+    def __class_getitem__(cls, args: Any):
         if not isinstance(args, tuple):
             args = (args, )
         return cls(*args)

@@ -145,11 +145,11 @@ class TestStructured:
         class Derived2(Base, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):
             b: int8
         assert isinstance(Derived2.serializer, struct.Struct)
-        assert Derived2.serializer.format == ByteOrder.LE.value + '2b'  # type: ignore
+        assert Derived2.serializer.format == ByteOrder.LE.value + '2b'
 
     def test_unpack_read(self) -> None:
         class Base(Structured):
-            a: int8
+            a: int  = factory(int8)
         b = Base(42)
         data = b.pack()
         with io.BytesIO(data) as stream:

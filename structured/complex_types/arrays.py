@@ -22,7 +22,7 @@ from ..utils import specialized, container
 from ..structured import Structured
 from ..type_checking import (
     Union, ReadableBuffer, WritableBuffer, SupportsRead, SupportsWrite, Any,
-    NoReturn, ClassVar, Optional,
+    NoReturn, ClassVar, Optional, _T
 )
 
 
@@ -31,10 +31,19 @@ SizeTypes = Union[uint8, uint16, uint32, uint64]
 
 
 # Containers to allow optional more verbose supplying of array
-# arguments, in any order.
-class size_check(container): pass
-class array_size(container): pass
-class array_type(container): pass
+# arguments, in any order.  Override the base class's class getitem
+# for type-checkers.
+class size_check(container):
+    def __class_getitem__(cls, key: type[SizeTypes]):
+        return super().__class_getitem__(key)
+
+class array_type(container):
+    def __class_getitem__(cls, key: type[Union[Structured, format_type]]):
+        return super().__class_getitem__(key)
+
+class array_size(container):
+    def __class_getitem__(cls, key: Union[int, type[SizeTypes]]):
+        return super().__class_getitem__(key)
 
 
 class array(list, requires_indexing):
@@ -714,7 +723,7 @@ class _structured_array(_header, Serializer):
         :return: The packed array.
         """
         with io.BytesIO() as out:
-            self.pack_write(out, *values)   # type: ignore
+            self.pack_write(out, *values)
             return out.getvalue()
 
     def pack_into(self, buffer: WritableBuffer, offset: int, *values) -> None:
@@ -750,7 +759,7 @@ class _structured_array(_header, Serializer):
         count = len(arr)
         self.size = self.header.size
         if self.two_pass:
-            header_pos = writable.tell()        # type: ignore
+            header_pos = writable.tell()
         else:
             header_pos = 0
         header_packer = partial(self.header.pack_write, writable)
@@ -760,10 +769,10 @@ class _structured_array(_header, Serializer):
             self.size += item.serializer.size
         if self.two_pass:
             data_size = self.size - self.header.size
-            final_pos = writable.tell()     # type: ignore
-            writable.seek(header_pos)       # type: ignore
+            final_pos = writable.tell()
+            writable.seek(header_pos)
             self.pack_header(header_packer, count, data_size)
-            writable.seek(final_pos)        # type: ignore
+            writable.seek(final_pos)
 
     def _item_unpacker(self, buffer: ReadableBuffer) -> Structured:
         """Helper for _unpack, unpacks an item from the correct position in a
