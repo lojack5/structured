@@ -14,6 +14,9 @@ addopts = "--cov --cov-report term --cov-report=html --cov-report=xml"
 requires = ['setuptools>=61.0']
 build-backend = 'setuptools.build_meta'
 
+[tool.setuptools]
+package-dir = {"structured" = "structured"}
+
 [project]
 name = 'structured_classes'
 version = '2.0'
