@@ -1,5 +1,5 @@
 __author__ = 'lojack5'
-__version__ = '2.0'
+__version__ = '2.0.1'
 
 from .structured import *
 from .basic_types import *

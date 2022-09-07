@@ -19,7 +19,7 @@ package-dir = {"structured" = "structured"}
 
 [project]
 name = 'structured_classes'
-version = '2.0'
+version = '2.0.1'
 authors = [
     { name = 'lojack5' },
 ]

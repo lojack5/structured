@@ -409,11 +409,12 @@ def unicode_wrap(
             super().pack_write(writable, self.encoder(values[0]))
 
         def unpack(self, buffer: ReadableBuffer) -> tuple[str]:
-            return self.decoder(super().unpack(buffer)[0]),
+            return self.decoder(super().unpack(buffer)[0]).rstrip('\0'),
 
         def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[str]:
-            return self.decoder(super().unpack_from(buffer, offset)[0]),
+            return self.decoder(
+                super().unpack_from(buffer, offset)[0]).rstrip('\0'),
 
         def unpack_read(self, readable: SupportsRead) -> tuple[str]:
-            return self.decoder(super().unpack_read(readable)[0]),
+            return self.decoder(super().unpack_read(readable)[0]).rstrip('\0'),
     return _unicode
