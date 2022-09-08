@@ -206,23 +206,24 @@ class MyStruct(Structured):
 ```
 
 ### `array`
-Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of three ways:
-- A static number of items packed continuously.
-- A dynamic number of items packed continuously, preceeded by the number of items packed.
+Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of five ways:
+- A static number of basic items packed continuously.
+- A dynamic number of basic items packed continuously, preceeded by the number of items packed.
 - A static number of Structured items packed continuously, preceeded by the total size of the items.
 - A dynamic number of Structured items packed continuously, preceeded by the number of items packed.
 - A dynamic number of Structured items packed continuously, preceeded by the number of items as well as the total size of the packed items.
+To declare which type, use a specialization of the `Header` class as the first argument to your `array` specialization.  The first argument to `Header` is the array length: either an integer, or one of the `uint*` types used to unpack the length.  The second (optional) argument specifies a `uint*` type used to hold the size of the packed array items in bytes.
 
 For example, suppose you know there will always be 10 `uint8`s in your object and you want them in an array:
 ```python
 class MyStruct(Structured):
-  items: array[10, uint8]
+  items: array[Header[10], uint8]
 ```
 
 Or if you need to unpack a `uint32` to determine the number of `uint8`s, then immediately unpack those items:
 ```python
 class MyStruct(Structured):
-  items: array[uint32, uint8]
+  items: array[Header[uint32], uint8]
 ```
 
 For arrays of `Structured` objects, you can optionally also provide a type to unpack, directly after the array length, which represents the packed array size in bytes.
@@ -232,15 +233,8 @@ class MyItem(Structured):
   second: uint16
 
 class MyStruct(Structured):
-  ten_items: array[10, uint32, MyItem]
-  many_items: array[uint32, uint32, MyItem]
-```
-
-Finally, since there are many options for `array`s, you can provide these arguments with special marker classes.  They are provided only to make the code more readable, with one small side benifit: when used, you can provide these arguments in any order.  For example:
-```python
-class MyStruct(Structured):
-  ten_items: array[10, array_type[MyItem], size_check[uint32]]
-  many_items: array[array_size[uint32], size_check[uint32], MyItem]
+  ten_items: array[Header[10, uint32], MyItem]
+  many_items: array[Header[uint32, uint32], MyItem]
 ```
 
 
@@ -253,7 +247,7 @@ For the most part, `structured` should work with type checkers set to basic leve
 - `array` is a subclass of `list`.
 - `unicode` is a subclass of `str`.
 
-The trick here is that all of these types are not actually unpacked as their type.  For example an attribute marked as `array[4, int8]` is unpacked as a `list[int]`.  So for the most part, type checkers will correctly identify what methods are available to each type.
+The trick here is that all of these types are not actually unpacked as their type.  For example an attribute marked as `array[Header[4], int8]` is unpacked as a `list[int]`.  So for the most part, type checkers will correctly identify what methods are available to each type.
 
 The exception is assigning values to attributes, and iterating over `array`s.  For example:
 ```python
@@ -266,19 +260,18 @@ o.a = 2
 Most type checkers will warn on setting `o.a = 2`, as `int` and `int8` are incompatible here.  Similarly,
 ```python
 class MyStruct(Structured):
-  a: array[2, int8]
+  a: array[Header[2], int8]
 o = MyStruct([1, 2])
 
-sum = 0
-for i in o.a:
-  sum += i
+o.a[1] = 2
 ```
-Most type checkers will not realize that the iterator `i` is an integer.
+Most type checkers will warn again, saying `int` is incompatible with `int8`.
 
 One workaround is to use the `serialized` method during class creation.  This allows you to hint the type as it's actual unpacked type, but still inform the `Structured` class how to pack/unpack it:
 ```python
 class MyStruct(Structured):
   a: int = serialized(int8)
+  b: list[int] = serialized(array[Header[2], int8])
 ```
 
 No solution is perfect, and any type checker set to a strict level will complain about a lot of code.
