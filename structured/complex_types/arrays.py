@@ -62,7 +62,10 @@ class array(list[U], requires_indexing, Generic[T, U]):
         """
         raise exc_type(f'{cls.__qualname__}[] {msg}')
 
-    def __class_getitem__(cls, args: tuple[type[T], type[U]]) -> type[Serializer]:
+    def __class_getitem__(
+            cls,
+            args: tuple[type[T], type[U]]
+        ) -> type[Serializer]:
         """Perform error checks and dispatch to the applicable class factory."""
         if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
@@ -80,15 +83,27 @@ class array(list[U], requires_indexing, Generic[T, U]):
         if (not isinstance(array_type, type) or
             not issubclass(array_type, (format_type, Structured))
         ):
-            cls.error(TypeError, 'array object type must be a format type or Structured type')
+            cls.error(
+                TypeError,
+                'array object type must be a format type or Structured type'
+            )
         return cls._create(header, array_type)
 
     @classmethod
     @cache
-    def _create(cls, header: type[Header], array_type: type[U]) -> type[Serializer]:
+    def _create(
+            cls,
+            header: type[Header],
+            array_type: type[U]
+        ) -> type[Serializer]:
+        """Actual creation of the header."""
         if issubclass(array_type, format_type):
             if issubclass(header, (StaticCheckedHeader, DynamicCheckedHeader)):
-                cls.error(TypeError, 'size checked arrays are only supported for Structured arrays')
+                cls.error(
+                    TypeError,
+                    'size checked arrays are only supported for Structured '
+                    'arrays'
+                )
             elif issubclass(header, StaticHeader):
                 @specialized(cls, header, array_type)
                 class _array1(_format_array):
@@ -111,18 +126,29 @@ class array(list[U], requires_indexing, Generic[T, U]):
 
 
 class _structured_array(Serializer):
+    """All the Serialization logic for arrays containing Structured objects.
+    Subclass and set header_type and obj_type to create an array implementation.
+    """
     header_type: ClassVar[type[Header]]
     obj_type: ClassVar[type[Structured]]
 
     def __init__(self, byte_order: ByteOrder):
+        """Setup the array header."""
         self.header = self.header_type(0, 0)
 
     def pack(self, *values: Any) -> bytes:
+        """Pack an array into bytes."""
         with io.BytesIO() as out:
             self.pack_write(out, *values)
             return out.getvalue()
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+    def pack_into(
+            self,
+            buffer: WritableBuffer,
+            offset: int,
+            *values: Any
+        ) -> None:
+        """Pack an array into a buffer supporting the Buffer Protocol."""
         items: list[Structured] = values[0]
         self.header.count = len(items)
         self.size = self.header.serializer.size
@@ -133,6 +159,7 @@ class _structured_array(Serializer):
         self.header.pack_into(buffer, offset)
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+        """Pack an array and write it to a file-like object."""
         items: list[Structured] = values[0]
         self.header.count = len(items)
         if self.header.two_pass:
@@ -152,6 +179,7 @@ class _structured_array(Serializer):
             writable.seek(final_pos)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
+        """Unpack an array from a bytes-like buffer."""
         self.header.unpack(buffer)
         self.size = self.header.serializer.size
         unpack_item = self.obj_type.create_unpack
@@ -164,6 +192,7 @@ class _structured_array(Serializer):
         return items,
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
+        """Unpack an array from a buffer supporting the Buffer Protocol."""
         self.header.unpack_from(buffer, offset)
         self.size = self.header.serializer.size
         unpack_item = self.obj_type.create_unpack_from
@@ -176,6 +205,7 @@ class _structured_array(Serializer):
         return items,
 
     def unpack_read(self, readable: SupportsRead) -> tuple:
+        """Unpack an array from a file-like object."""
         self.header.unpack_read(readable)
         items = [self.obj_type.create_unpack_read(readable) for i in range(self.header.count)]
         data_size = sum(item.serializer.size for item in items)

@@ -17,14 +17,24 @@ SizeTypes = Union[uint8, uint16, uint32, uint64]
 
 
 class HeaderBase:
+    """Base class for all Headers.  All subclasses should expose `count` and
+    `data_size` as ints, either via property or attribute.  These are not in
+    the base class so as to not mess with Structured.
+
+    TODO: Investigate if making this a Protocol will work with the desired
+    effect
+    """
     def __init__(self, count: int, data_size: int) -> None:
-        pass
+        """Set count and data_size as applicable."""
 
     def validate_data_size(self, data_size: int) -> None:
-        pass
+        """Check if `data_size`, representing the actual bytes read to unpack
+        the array data, is correct.
+        """
 
 
 class StaticHeader(HeaderBase, Structured):
+    """StaticHeader representing a statically sized array."""
     # NOTE: HeaderBase first, to get it's __init__
     _count: ClassVar[int] = 0
     data_size: ClassVar[int] = 0
@@ -32,13 +42,22 @@ class StaticHeader(HeaderBase, Structured):
 
     @property
     def count(self) -> int:
+        """Expose count as a property, so we can size check on setting."""
         return self._count
+
     @count.setter
     def count(self, new_count: int) -> None:
+        """Check for correct array length."""
         if new_count != self._count:
-            raise ValueError(f'expected an array of length {self.count}, but got {new_count}')
+            raise ValueError(
+                f'expected an array of length {self.count}, but got {new_count}'
+            )
 
-    def __class_getitem__(cls: type[StaticHeader], count: int) -> type[StaticHeader]:
+    def __class_getitem__(
+            cls: type[StaticHeader],
+            count: int,
+        ) -> type[StaticHeader]:
+        """Specialize for a specific static size."""
         if count <= 0:
             raise ValueError('count must be positive')
         class _StaticHeader(cls):
@@ -47,6 +66,9 @@ class StaticHeader(HeaderBase, Structured):
 
 
 class DynamicHeader(Structured, HeaderBase):
+    """Base for dynamically sized arrays, where the array length is just prior
+    to the array data.
+    """
     count: int
     data_size: ClassVar[int] = 0
     two_pass: ClassVar[bool] = False
@@ -54,13 +76,16 @@ class DynamicHeader(Structured, HeaderBase):
     _headers = {}
 
     def __init__(self, count: int, data_size: int) -> None:
+        """Only `count` is packed/unpacked."""
         self.count = count
 
-    def validate_data_size(self, data_size: int) -> None:
-        pass
-
-    def __class_getitem__(cls, count_type: type[SizeTypes]) -> type[DynamicHeader]:
+    def __class_getitem__(
+            cls,
+            count_type: type[SizeTypes],
+        ) -> type[DynamicHeader]:
+        """Specialize based on the uint* type used to store the array length."""
         return cls._headers[count_type]
+
 class _DynamicHeader8(DynamicHeader):
     count: uint8
 class _DynamicHeader16(DynamicHeader):
@@ -78,6 +103,9 @@ DynamicHeader._headers = {
 
 
 class StaticCheckedHeader(Structured, HeaderBase):
+    """Statically sized array, with a size check int packed just prior to the
+    array data.
+    """
     _count: ClassVar[int] = 0
     data_size: int
     two_pass: ClassVar[bool] = True
@@ -85,21 +113,36 @@ class StaticCheckedHeader(Structured, HeaderBase):
     _headers = {}
 
     def __init__(self, count: int, data_size: int) -> None:
+        """Only `data_size` is packed/unpacked."""
         self.data_size = data_size
 
     def validate_data_size(self, data_size: int) -> None:
+        """Verify correct amount of bytes were read."""
         if data_size != self.data_size:
-            raise ValueError(f'unpacking array, expected {self.data_size} bytes, but only got {data_size}')
+            raise ValueError(
+                f'unpacking array, expected {self.data_size} bytes, but only '
+                f'got {data_size}'
+            )
 
     @property
     def count(self) -> int:
+        """Count exposed as a property so we can length check on setting."""
         return self._count
+
     @count.setter
     def count(self, new_count: int) -> None:
+        """Verify correct array length."""
         if new_count != self._count:
-            raise ValueError(f'expected an array of length {self._count}, but got {new_count}')
+            raise ValueError(
+                f'expected an array of length {self._count}, but got '
+                f'{new_count}'
+            )
 
-    def __class_getitem__(cls: type[StaticCheckedHeader], key: tuple[int, type[SizeTypes]]) -> type[StaticCheckedHeader]:
+    def __class_getitem__(
+            cls: type[StaticCheckedHeader],
+            key: tuple[int, type[SizeTypes]],
+        ) -> type[StaticCheckedHeader]:
+        """Specialize for the specific static size and check type."""
         count, size_type = key
         if count <= 0:
             raise ValueError('count must be positive')
@@ -107,6 +150,7 @@ class StaticCheckedHeader(Structured, HeaderBase):
         class _StaticCheckedHeader(base):
             _count: ClassVar[int] = count
         return _StaticCheckedHeader
+
 class _StaticCheckedHeader8(StaticCheckedHeader):
     data_size: uint8
 class _StaticCheckedHeader16(StaticCheckedHeader):
@@ -124,6 +168,7 @@ StaticCheckedHeader._headers = {
 
 
 class DynamicCheckedHeader(Structured, HeaderBase):
+    """Dynamically sized array with a size check."""
     count: int
     data_size: int
     two_pass: ClassVar[bool] = True
@@ -131,11 +176,20 @@ class DynamicCheckedHeader(Structured, HeaderBase):
     _headers = {}
 
     def validate_data_size(self, data_size: int) -> None:
+        """Verify the correct number of bytes were read."""
         if data_size != self.data_size:
-            raise ValueError(f'unpacking array, expected {self.data_size} bytes, but only got {data_size}')
+            raise ValueError(
+                f'unpacking array, expected {self.data_size} bytes, but only '
+                f'got {data_size}'
+            )
 
-    def __class_getitem__(cls: type[DynamicCheckedHeader], key: tuple[type[SizeTypes], type[SizeTypes]]) -> type[DynamicCheckedHeader]:
+    def __class_getitem__(
+            cls: type[DynamicCheckedHeader],
+            key: tuple[type[SizeTypes], type[SizeTypes]],
+        ) -> type[DynamicCheckedHeader]:
+        """Specialize based on size type and check type."""
         return cls._headers[key]
+
 class _DynamicCheckedHeader8_8(DynamicCheckedHeader):
     count: uint8
     data_size: uint8
@@ -205,7 +259,9 @@ DynamicCheckedHeader._headers = {
 
 
 class Header(Structured, HeaderBase):
-    """Pseudo-Header class that's used to specialize to one of the concrete ones."""
+    """Pseudo-Header class that's used to specialize to one of the concrete
+    ones.
+    """
     count: int
     data_size: int
     two_pass: ClassVar[bool]
@@ -213,6 +269,9 @@ class Header(Structured, HeaderBase):
     @classmethod
     @cache
     def __class_getitem__(cls, key) -> type[Header]:
+        """Main entry point for making Headers.  Do type checks and create the
+        appropriate Header type.
+        """
         if not isinstance(key, tuple):
             count, size_check = key, None
         elif len(key) != 2:
@@ -234,4 +293,7 @@ class Header(Structured, HeaderBase):
                     header = DynamicCheckedHeader[count, size_check]
             return specialized(cls, *args)(header)  # type: ignore
         except KeyError:
-            raise TypeError(f'{cls.__name__}[] expected first argument integer or uint* type, second argument uint* type or None') from None
+            raise TypeError(
+                f'{cls.__name__}[] expected first argument integer or uint* '
+                'type, second argument uint* type or None'
+            ) from None
