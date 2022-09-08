@@ -49,9 +49,10 @@ def filter_typehints(typehints: dict[str, Any], classdict: dict[str, Any]) -> di
         for attr, attr_type in typehints.items()
         if validate_typehint(attr_type)
     }
-    for attr, attr_type in classdict.items():
+    for attr, attr_type in tuple(classdict.items()):
         if validate_typehint(attr_type):
             filtered[attr] = attr_type
+            #del classdict[attr]
     return filtered
 
 
