@@ -5,6 +5,9 @@ values.
 """
 from __future__ import annotations
 
+from functools import cache
+
+from ..utils import specialized
 from ..structured import Structured
 from ..basic_types import uint8, uint16, uint32, uint64
 from ..type_checking import ClassVar, Union
@@ -207,6 +210,8 @@ class Header(Structured, HeaderBase):
     data_size: int
     two_pass: ClassVar[bool]
 
+    @classmethod
+    @cache
     def __class_getitem__(cls, key) -> type[Header]:
         if not isinstance(key, tuple):
             count, size_check = key, None
@@ -216,14 +221,17 @@ class Header(Structured, HeaderBase):
             count, size_check = key
         try:
             if size_check is None:
+                args = (count,)
                 if isinstance(count, int):
-                    return StaticHeader[count]  # type: ignore
+                    header = StaticHeader[count]
                 else:
-                    return DynamicHeader[count] # type: ignore
+                    header = DynamicHeader[count]
             else:
+                args = (count, size_check)
                 if isinstance(count, int):
-                    return StaticCheckedHeader[count, size_check]   # type: ignore
+                    header = StaticCheckedHeader[count, size_check]
                 else:
-                    return DynamicCheckedHeader[count, size_check]  # type: ignore
+                    header = DynamicCheckedHeader[count, size_check]
+            return specialized(cls, *args)(header)  # type: ignore
         except KeyError:
             raise TypeError(f'{cls.__name__}[] expected first argument integer or uint* type, second argument uint* type or None') from None

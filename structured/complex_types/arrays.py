@@ -62,13 +62,15 @@ class array(list[U], requires_indexing, Generic[T, U]):
         """
         raise exc_type(f'{cls.__qualname__}[] {msg}')
 
-    @classmethod
-    @cache
     def __class_getitem__(cls, args: tuple[type[T], type[U]]) -> type[Serializer]:
         """Perform error checks and dispatch to the applicable class factory."""
-        if not isinstance(args, tuple) or not len(args) == 2:
+        if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
-        header, array_type = args
+        if len(args) == 2:
+            header, array_type = args
+        else:
+            header = Header[args[:-1]]
+            array_type = args[-1]
         if (not isinstance(header, type) or
             not issubclass(header, HeaderBase) or
             header is HeaderBase or
@@ -79,24 +81,29 @@ class array(list[U], requires_indexing, Generic[T, U]):
             not issubclass(array_type, (format_type, Structured))
         ):
             cls.error(TypeError, 'array object type must be a format type or Structured type')
+        return cls._create(header, array_type)
+
+    @classmethod
+    @cache
+    def _create(cls, header: type[Header], array_type: type[U]) -> type[Serializer]:
         if issubclass(array_type, format_type):
             if issubclass(header, (StaticCheckedHeader, DynamicCheckedHeader)):
                 cls.error(TypeError, 'size checked arrays are only supported for Structured arrays')
             elif issubclass(header, StaticHeader):
-                @specialized(cls, args)
+                @specialized(cls, header, array_type)
                 class _array1(_format_array):
                     count: ClassVar[int] = header._count
                     obj_type: ClassVar[type[format_type]] = array_type
                 return _array1
             else:
                 count = get_type_hints(header)['count']
-                @specialized(cls, args)
+                @specialized(cls, header, array_type)
                 class _array2(_dynamic_format_array):
                     count_type: ClassVar[type[SizeTypes]] = count
                     obj_type: ClassVar[type[format_type]] = array_type
                 return _array2
         else:
-            @specialized(cls, args)
+            @specialized(cls, header, array_type)
             class _array3(_structured_array):
                 header_type: ClassVar[type[Header]] = header
                 obj_type: ClassVar[type[Structured]] = array_type

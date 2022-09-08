@@ -11,6 +11,8 @@ class Item(Structured):
     a: int32
     b: uint8
 
+def test_backwards_compat():
+    assert array[1, uint32, Item] is array[Header[1, uint32], Item] # type: ignore
 
 def test_errors():
     ## Number of args
