@@ -4,6 +4,7 @@ import io
 import pytest
 
 from structured import *
+from structured.complex_types.array_headers import HeaderBase
 
 
 class Item(Structured):
@@ -14,39 +15,46 @@ class Item(Structured):
 def test_errors():
     ## Number of args
     with pytest.raises(TypeError):
-        array[1]            # not enough
+        Header[1, 2, 3]     # too many
     with pytest.raises(TypeError):
-        array[1, 2, 3, 4]   # too many
+        array[Header[1]]    # type: ignore (not enough)
+    with pytest.raises(TypeError):
+        array[Header[1], 2, 3, 4]   # type: ignore (too many)
+    ## Header type
+    with pytest.raises(TypeError):
+        array[Header, int32]
+    with pytest.raises(TypeError):
+        array[HeaderBase, int32]    # type: ignore
     ## Array type
     with pytest.raises(TypeError):
-        array[1, 2]
+        array[Header[1], 2]     # type: ignore
+    with pytest.raises(TypeError):
+        array[Header[1], int]   # type: ignore
     ## Size check type
     with pytest.raises(TypeError):
-        array[1, 2, Item]
+        Header[1, 2]
+    with pytest.raises(TypeError):
+        Header[1, int]
     ## format_type arrays with a size check
     with pytest.raises(TypeError):
-        array[1, uint32, int32]
+        array[Header[1, uint32], int32]
     with pytest.raises(TypeError):
-        array[uint32, uint32, int32]
+        array[Header[uint32, uint32], int32]
     ## Array size
     with pytest.raises(ValueError):
-        array[0, uint32, Item]      # invalid size
+        Header[0]       # invalid size
+    with pytest.raises(ValueError):
+        Header[0, uint32]      # invalid size
     with pytest.raises(TypeError):
-        array[int, uint32, Item]    # wrong type
-    ## Duplicate arguments
+        Header[int]     # invalid type
     with pytest.raises(TypeError):
-        array[size_check[uint32], size_check[uint32], array_size[uint32]]
-
-
-def test_arbitary_arg_order():
-    cls = array[array_type[Item], size_check[uint32], array_size[10]]
-    assert cls.__qualname__ == 'array[10, uint32, Item]'
+        Header[int8]    # invalid type
 
 
 def test_static_format():
     class Static(Structured):
         a: int          = serialized(int32)
-        b: list[int]    = serialized(array[5, uint32])
+        b: list[int]    = serialized(array[Header[5], uint32])
     target_obj = Static(42, [1, 2, 3, 4, 5])
 
     st = struct.Struct('i5I')
@@ -91,7 +99,7 @@ def test_static_format_action():
             return NotImplemented
 
     class StaticAction(Structured):
-        a: array[3, WrappedInt[int8]]
+        a: array[Header[3], WrappedInt[int8]]
 
     target_obj = StaticAction(list(map(WrappedInt[int8], (1 ,2, 3))))
 
@@ -120,7 +128,7 @@ def test_static_format_action():
 
 def test_static_structured():
     class Compound(Structured):
-        a: list[Item] = serialized(array[3, Item])
+        a: list[Item] = serialized(array[Header[3], Item])
 
     target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
     with io.BytesIO() as out:
@@ -158,7 +166,7 @@ def test_static_structured():
 
 def test_static_checked_structured():
     class Compound(Structured):
-        a: array[3, uint32, Item]
+        a: list[Item] = serialized(array[Header[3, uint32], Item])
     target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
 
     with io.BytesIO() as stream:
@@ -187,10 +195,21 @@ def test_static_checked_structured():
         stream.seek(0)
         assert Compound.create_unpack_read(stream) == target_obj
 
+    # Incorrect array size
+    target_obj.a = []
+    with pytest.raises(ValueError):
+        target_obj.pack()
+
+    # Test malformed data_size
+    st = struct.Struct(uint32.format)
+    st.pack_into(buffer, 0, 0)
+    with pytest.raises(ValueError):
+        Compound.create_unpack_from(buffer)
+
 
 def test_dynamic_format():
     class Compound(Structured):
-        a: array[uint32, int8]
+        a: array[Header[uint32], int8]
     target_obj = Compound([1, 2, 3])
 
     st = struct.Struct('I3b')
@@ -218,7 +237,7 @@ def test_dynamic_format():
 
 def test_dynamic_structured():
     class Compound(Structured):
-        a: array[uint32, Item]
+        a: array[Header[uint32], Item]
     target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
 
     with io.BytesIO() as out:
@@ -252,7 +271,7 @@ def test_dynamic_structured():
 
 def test_dynamic_checked_structured():
     class Compound(Structured):
-        a: array[uint32, uint32, Item]
+        a: array[Header[uint32, uint32], Item]
     target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
 
     with io.BytesIO() as out:
@@ -281,3 +300,9 @@ def test_dynamic_checked_structured():
         assert target_obj.serializer.size == size
         stream.seek(0)
         assert Compound.create_unpack_read(stream) == target_obj
+
+    # Test malformed data_size
+    st = struct.Struct(uint32.format)
+    st.pack_into(buffer, 0, 0)      # write over data_size with 0
+    with pytest.raises(ValueError):
+        Compound.create_unpack_from(buffer)

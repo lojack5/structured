@@ -1,7 +1,7 @@
 import sys
 import typing
 from typing import (
-    Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union,
+    Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union, Generic,
     get_origin, get_type_hints, runtime_checkable, NoReturn, cast,
 )
 

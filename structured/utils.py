@@ -4,24 +4,6 @@ Various utility methods.
 from .type_checking import _T, NoReturn, Any, Callable
 
 
-class container:
-    wrapped: Any
-
-    def __init__(self, wrapped):
-        self.wrapped = wrapped
-
-    @staticmethod
-    def unwrap(item: Any) -> Any:
-        if isinstance(item, container):
-            return item.wrapped
-        return item
-
-    def __class_getitem__(cls, args: Any):
-        if not isinstance(args, tuple):
-            args = (args, )
-        return cls(*args)
-
-
 @classmethod
 def __error_getitem__(cls: type, _key: Any) -> NoReturn:
     raise TypeError(f'{cls.__qualname__} is already specialized.')
