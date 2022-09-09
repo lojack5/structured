@@ -10,6 +10,16 @@ from structured.complex_types.array_headers import HeaderBase
 class Item(Structured):
     a: int32
     b: uint8
+    c: char[uint8]
+
+
+@pytest.fixture
+def items() -> list[Item]:
+    return [
+        Item(1, 11, b'foo'),
+        Item(2, 22, b'bar'),
+        Item(3, 33, b'Hello'),
+    ]
 
 
 def test_backwards_compat():
@@ -132,11 +142,11 @@ def test_static_format_action():
         assert StaticAction.create_unpack_read(stream) == target_obj
 
 
-def test_static_structured():
+def test_static_structured(items: list[Item]):
     class Compound(Structured):
         a: list[Item] = serialized(array[Header[3], Item])
 
-    target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
+    target_obj = Compound(items)
     with io.BytesIO() as out:
         for item in target_obj.a:
             # Using the fact that Structured.pack is tested already on basic
@@ -170,16 +180,19 @@ def test_static_structured():
         target_obj.pack()
 
 
-def test_static_checked_structured():
+def test_static_checked_structured(items: list[Item]):
     class Compound(Structured):
         a: list[Item] = serialized(array[Header[3, uint32], Item])
-    target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
+    target_obj = Compound(items)
 
     with io.BytesIO() as stream:
-        array_data_size = Item.serializer.size * 3
-        stream.write(struct.pack('I', array_data_size))
+        stream.write(struct.pack('I', 0))
+        data_size = 0
         for item in target_obj.a:
             item.pack_write(stream)
+            data_size += item.serializer.size
+        stream.seek(0)
+        stream.write(struct.pack('I', data_size))
         target_data = stream.getvalue()
     size = len(target_data)
 
@@ -241,10 +254,10 @@ def test_dynamic_format():
         assert Compound.create_unpack_read(stream) == target_obj
 
 
-def test_dynamic_structured():
+def test_dynamic_structured(items: list[Item]):
     class Compound(Structured):
         a: array[Header[uint32], Item]
-    target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
+    target_obj = Compound(items)
 
     with io.BytesIO() as out:
         # Item uses a plain struct serializer, already tested
@@ -275,16 +288,20 @@ def test_dynamic_structured():
         assert Compound.create_unpack_read(stream) == target_obj
 
 
-def test_dynamic_checked_structured():
+def test_dynamic_checked_structured(items: list[Item]):
     class Compound(Structured):
+        b: uint32
         a: array[Header[uint32, uint32], Item]
-    target_obj = Compound([Item(1, 11), Item(2, 22), Item(3, 33)])
+    target_obj = Compound(42, items)
 
     with io.BytesIO() as out:
-        array_size = Item.serializer.size * 3
-        out.write(struct.pack('2I', 3, array_size))
+        out.write(struct.pack('3I', 42, 3, 0))
+        data_size = 0
         for item in target_obj.a:
             item.pack_write(out)
+            data_size += item.serializer.size
+        out.seek(0)
+        out.write(struct.pack('3I', 42, 3, data_size))
         target_data = out.getvalue()
     size = len(target_data)
 
@@ -308,7 +325,7 @@ def test_dynamic_checked_structured():
         assert Compound.create_unpack_read(stream) == target_obj
 
     # Test malformed data_size
-    st = struct.Struct(uint32.format)
-    st.pack_into(buffer, 0, 0)      # write over data_size with 0
+    st = struct.Struct('3I')
+    st.pack_into(buffer, 0, 42, 3, 0)      # write over data_size with 0
     with pytest.raises(ValueError):
         Compound.create_unpack_from(buffer)

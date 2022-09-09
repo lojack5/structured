@@ -151,11 +151,11 @@ class _structured_array(Serializer):
         """Pack an array into a buffer supporting the Buffer Protocol."""
         items: list[Structured] = values[0]
         self.header.count = len(items)
-        self.size = self.header.serializer.size
+        self.size = header_size = self.header.serializer.size
         for item in items:
             item.pack_into(buffer, offset + self.size)
             self.size += item.serializer.size
-        self.header.data_size = self.size - self.header.serializer.size
+        self.header.data_size = self.size - header_size
         self.header.pack_into(buffer, offset)
 
     def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
@@ -168,48 +168,54 @@ class _structured_array(Serializer):
             header_pos = 0
         self.header.pack_write(writable)
         self.size = self.header.serializer.size
+        data_size = 0
         for item in items:
             item.pack_write(writable)
-            self.size += item.serializer.size
+            data_size += item.serializer.size
+        self.size += data_size
         if self.header.two_pass:
             final_pos = writable.tell()
             writable.seek(header_pos)
-            self.header.data_size = self.size - self.header.serializer.size
+            self.header.data_size = data_size
             self.header.pack_write(writable)
             writable.seek(final_pos)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         """Unpack an array from a bytes-like buffer."""
         self.header.unpack(buffer)
-        self.size = self.header.serializer.size
+        self.size = header_size = self.header.serializer.size
         unpack_item = self.obj_type.create_unpack
         items: list[Structured] = []
         for i in range(self.header.count):
             items.append(unpack_item(buffer[self.size:]))
             self.size += items[-1].serializer.size
-        data_size = self.size - self.header.serializer.size
+        data_size = self.size - header_size
         self.header.validate_data_size(data_size)
         return items,
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         """Unpack an array from a buffer supporting the Buffer Protocol."""
         self.header.unpack_from(buffer, offset)
-        self.size = self.header.serializer.size
+        self.size = header_size = self.header.serializer.size
         unpack_item = self.obj_type.create_unpack_from
         items: list[Structured] = []
         for i in range(self.header.count):
             items.append(unpack_item(buffer, offset + self.size))
             self.size += items[-1].serializer.size
-        data_size = self.size - self.header.serializer.size
+        data_size = self.size - header_size
         self.header.validate_data_size(data_size)
         return items,
 
     def unpack_read(self, readable: SupportsRead) -> tuple:
         """Unpack an array from a file-like object."""
         self.header.unpack_read(readable)
-        items = [self.obj_type.create_unpack_read(readable) for i in range(self.header.count)]
-        data_size = sum(item.serializer.size for item in items)
-        self.size = data_size + self.header.serializer.size
+        self.size = self.header.serializer.size
+        data_size = 0
+        items: list[Structured] = []
+        for i in range(self.header.count):
+            items.append(self.obj_type.create_unpack_read(readable))
+            data_size += items[-1].serializer.size
+        self.size += data_size
         self.header.validate_data_size(data_size)
         return items,
 
