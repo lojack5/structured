@@ -244,11 +244,13 @@ class CompoundSerializer(Serializer):
         return tuple(chain(*values))
 
     def unpack_read(self, readable: SupportsRead) -> tuple:
-        return tuple(chain(
-            *(serializer.unpack_read(readable)
-              for serializer in self.serializers
-             )
-        ))
+        values = []
+        size = 0
+        for serializer in self.serializers:
+            values.append(serializer.unpack_read(readable))
+            size += serializer.size
+        self.size = size
+        return tuple(chain(*values))
 
 
 @cache
