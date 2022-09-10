@@ -6,8 +6,9 @@ values.
 from __future__ import annotations
 
 from functools import cache
+from typing import TypeVar
 
-from ..utils import specialized
+from ..utils import StructuredAlias, specialized
 from ..structured import Structured
 from ..basic_types import uint8, uint16, uint32, uint64
 from ..type_checking import ClassVar, Union
@@ -278,6 +279,9 @@ class Header(Structured, HeaderBase):
             raise TypeError(f'{cls.__name__}[] expected two arguments')
         else:
             count, size_check = key
+        # TypeVar checks:
+        if isinstance(count, TypeVar) or isinstance(size_check, TypeVar):
+            return StructuredAlias(cls, (count, size_check))
         try:
             if size_check is None:
                 args = (count,)

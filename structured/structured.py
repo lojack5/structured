@@ -3,6 +3,8 @@ import operator
 from typing import get_args, get_origin
 import typing
 
+from structured.utils import StructuredAlias
+
 __all__ = [
     'Structured',
     'ByteOrder', 'ByteOrderMode',
@@ -380,6 +382,8 @@ class Structured:
                 # Attribute's final type hint comes from this class
                 if remapped_type := tvar_map.get(attr_type, None):
                     annotations[attr] = remapped_type
+                elif isinstance(attr_type, StructuredAlias):
+                    annotations[attr] = attr_type.resolve(tvar_map)
         all_annotations = [annotations]
         for base, alias in supers.items():
             args = get_args(alias)
