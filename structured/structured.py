@@ -1,4 +1,7 @@
 from __future__ import annotations
+import operator
+from typing import get_args, get_origin
+import typing
 
 __all__ = [
     'Structured',
@@ -337,6 +340,18 @@ class Structured:
                     f'{base.__name__} ({base.byte_order.name}). '
                     'If this is intentional, use `byte_order_mode=OVERRIDE`.'
                 )
+        if base:
+            # determine correct typehints for any Generic's in the base class
+            orig_bases = getattr(cls, '__orig_bases__', ())
+            base_to_origbase = {
+                origin: orig_base
+                for orig_base in orig_bases
+                if (origin := get_origin(orig_base)) and issubclass(origin, Structured)
+            }
+            orig_base = base_to_origbase.get(base, None)
+            if orig_base:
+                updates = base._specialize(*get_args(orig_base))
+                cls.__annotations__.update(updates)
         # Analyze the class
         typehints = get_type_hints(cls)
         serializer, attrs = create_serializer(
@@ -347,3 +362,28 @@ class Structured:
         cls.attrs = attrs
         cls.byte_order = byte_order
 
+    @classmethod
+    def _specialize(cls, *args):
+        supers: dict[type[Structured], Any] = {}
+        tvars = ()
+        for base in getattr(cls, '__orig_bases__', ()):
+            if (origin := get_origin(base)) is typing.Generic:
+                tvars = get_args(base)
+            elif origin and issubclass(origin, Structured):
+                supers[origin] = base
+        tvar_map = dict(zip(tvars, args))
+        if not tvar_map:
+            return {}
+        annotations = {}
+        for attr, attr_type in get_type_hints(cls).items():
+            if attr in cls.__annotations__:
+                # Attribute's final type hint comes from this class
+                if remapped_type := tvar_map.get(attr_type, None):
+                    annotations[attr] = remapped_type
+        all_annotations = [annotations]
+        for base, alias in supers.items():
+            args = get_args(alias)
+            args = (tvar_map.get(arg, arg) for arg in args)
+            super_annotations = base._specialize(*args)
+            all_annotations.append(super_annotations)
+        return reduce(operator.or_, reversed(all_annotations))
