@@ -116,6 +116,10 @@ class TestStructured:
         assert isinstance(Derived3.serializer, struct.Struct)
         assert Derived3.serializer.format == '10p3p'
 
+        with pytest.raises(TypeError):
+            class Base4(Base2, Base3):
+                pass
+
     def test_override_types(self) -> None:
         class Base1(Structured):
             a: int8
