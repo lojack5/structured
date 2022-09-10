@@ -315,6 +315,7 @@ class Structured:
             cls,
             byte_order: ByteOrder = ByteOrder.DEFAULT,
             byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
+            **kwargs,
         ) -> None:
         """Subclassing a Structured type.  We need to compute new values for the
         serializer and attrs.
@@ -325,6 +326,7 @@ class Structured:
             class's byte order.
         :raises ValueError: _description_
         """
+        super().__init_subclass__(**kwargs)
         # Check for byte order conflicts
         if (base := get_structured_base(cls)):
             if (byte_order_mode is ByteOrderMode.STRICT and
@@ -344,3 +346,4 @@ class Structured:
         cls.serializer = serializer
         cls.attrs = attrs
         cls.byte_order = byte_order
+
