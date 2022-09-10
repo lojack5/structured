@@ -160,75 +160,36 @@ def fold_overlaps(format1: str, format2: str) -> str:
     return format
 
 
-def find_structured_superclass(
-    bases: tuple[type, ...],
-) -> Optional[type[Structured]]:
-    """Find any Structured derived base classes, closes to this class in
-    the inheritance tree.
+def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
+    """Given a Structured derived class, find any base classes which are also
+    Structured derived.  If multiple are found, raise TypeError.
 
-    :param bases: Explicitly listed base classes.
-    :return: The closest Structured derived base class, or None.
+    :param cls: Structured derived class to analyze.
+    :return: The direct base class which is Structured derived and not the
+        Structured class itself, or None if no such base class exists.
     """
-    for chain in bases:
-        for base in chain.__mro__:
-            # Structured derived, but not Structured itself
-            if issubclass(base, Structured) and base is not Structured:
-                return base
+    bases = tuple((
+        base for base in cls.__bases__
+        if issubclass(base, Structured) and base is not Structured
+    ))
+    if len(bases) > 1:
+        raise TypeError(
+            'Multiple inheritence from Structured base classes is not allowed.'
+        )
+    elif bases:
+        return bases[0]
+    else:
+        return None
 
-
-class StructuredMeta(type):
-    """Metaclass for Structured subclasses.  Handles computing the format string
-    and determining assigned class attributes.  Accepts two metaclass arguments:
-
-    :param byte_order: Allows for adding a byte order specifier to the format
-        string for this class.
-    :type byte_order: ByteOrder
-    """
-
-    def __new__(
-            cls: type[StructuredMeta],
-            typename: str,
-            bases: tuple[type, ...],
-            classdict: dict[str, Any],
-            byte_order: ByteOrder = ByteOrder.DEFAULT,
-            byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
-        ) -> type[Structured]:
-        # Hacky way to leverage typing.get_type_hints to evaluate stringized
-        # annotations, even though the class isn't created yet.  Side benifit
-        # is this will also pull in type hints from all base classes as well.
-        # This allows for overriding of base class types.
-        temp_cls = super().__new__(cls, typename, bases, classdict)
-        typehints = get_type_hints(temp_cls)
-        del temp_cls
-        # See if we're extending a Structured base class
-        structured_base = find_structured_superclass(bases)
-        if structured_base is not None:
-            if (byte_order_mode is ByteOrderMode.STRICT and
-                (base_order := structured_base.byte_order) is not byte_order):
-                raise ValueError(
-                    'Incompatable byte order specifications between class '
-                    f'{typename} ({byte_order.name}) and base class '
-                    f'{structured_base.__qualname__} ({base_order.name}). '
-                    'If this is intentional, use `byte_order_mode=OVERRIDE`.'
-                )
-        # Now grab the serializer and associated attributes
-        serializer, attrs = create_serializer(typehints, classdict, byte_order)
-        # Setup class variables
-        classdict['serializer'] = serializer
-        classdict['attrs'] = attrs
-        classdict['byte_order'] = byte_order
-
-        # Create the class
-        return super().__new__(cls, typename, bases, classdict)  #type: ignore
 
 _C = TypeVar('_C', bound='Structured')
-class Structured(metaclass=StructuredMeta):
+class Structured:
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
     __slots__ = ()
-    serializer: ClassVar[Serializer]
-    attrs: ClassVar[tuple[str, ...]]
-    byte_order: ClassVar[ByteOrder]
+    serializer: ClassVar[Serializer] = struct_cache('')
+    attrs: ClassVar[tuple[str, ...]] = ()
+    byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
 
     def __init__(self, *args, **kwargs):
         # TODO: Create the init function on the fly (ala dataclass) so we can
@@ -349,3 +310,40 @@ class Structured(metaclass=StructuredMeta):
                 for attr in self.attrs
             ))
         return NotImplemented
+
+    def __init_subclass__(
+            cls,
+            byte_order: ByteOrder = ByteOrder.DEFAULT,
+            byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
+            **kwargs,
+        ) -> None:
+        """Subclassing a Structured type.  We need to compute new values for the
+        serializer and attrs.
+
+        :param byte_order: Which byte order to use for struct packing/unpacking.
+            Defaults to no byte order marker.
+        :param byte_order_mode: Mode to use when resolving conflicts with super
+            class's byte order.
+        :raises ValueError: _description_
+        """
+        super().__init_subclass__(**kwargs)
+        # Check for byte order conflicts
+        if (base := get_structured_base(cls)):
+            if (byte_order_mode is ByteOrderMode.STRICT and
+                base.byte_order is not byte_order):
+                raise ValueError(
+                    'Incompatable byte order specifications between class '
+                    f'{cls.__name__} ({byte_order.name}) and base class '
+                    f'{base.__name__} ({base.byte_order.name}). '
+                    'If this is intentional, use `byte_order_mode=OVERRIDE`.'
+                )
+        # Analyze the class
+        typehints = get_type_hints(cls)
+        serializer, attrs = create_serializer(
+            typehints, cls.__dict__, byte_order
+        )
+        # And set the updated class attributes
+        cls.serializer = serializer
+        cls.attrs = attrs
+        cls.byte_order = byte_order
+

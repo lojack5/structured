@@ -47,7 +47,7 @@ Notes:
  3. The `bool` type cannot be subclasses, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
  4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.
 
-You can also specify byte order packing/unpacking rules, by passing a `ByteOrder` to the `Structured` metaclass on class creation.  For example:
+You can also specify byte order packing/unpacking rules, by passing a `ByteOrder` to the `Structured` class on class creation.  For example:
 
 ```python
 class MyClassLE(Structured, byte_order=ByteOrder.LITTLE_ENDIAN):
@@ -147,7 +147,7 @@ class Derived(Base):
 In this example, `Derived` now treats `a` as an `int16`, and ignores `b` completely when it comes to packing/unpacking.  The format string for `Derived` is now `'hif'`.
 
 #### Extending - Byte Order
-When extending a `Structured` class, the default behavior is to only allow extending if the derived class has the same byte order specifier as the base class.  If you are purposfully wanting to change the byte order, pass `byte_order_mode=ByteOrderMode.OVERRIDE` in the metaclass:
+When extending a `Structured` class, the default behavior is to only allow extending if the derived class has the same byte order specifier as the base class.  If you are purposfully wanting to change the byte order, pass `byte_order_mode=ByteOrderMode.OVERRIDE` in the class derivation:
 ```python
 class Base(Structured, byte_order=ByteOrder.LE):
   magic: char[4]
