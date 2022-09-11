@@ -1,8 +1,11 @@
 import struct
-from structured import *
 from typing import Generic, TypeVar, Union, get_type_hints
 
+import pytest
+
+from structured import *
 from structured.utils import StructuredAlias
+
 
 _Byte = TypeVar('_Byte', bound=Union[uint8, int8])
 _String = TypeVar('_String', bound=Union[char, pascal, unicode])
@@ -21,10 +24,11 @@ class UnsignedUnicode(Base[uint8, unicode[uint8]]):
     pass
 
 
-class TestAliasing:
-    class Item(Structured):
-        a: int8
+class Item(Structured):
+    a: int8
 
+
+class TestAliasing:
     tvar_map = {
         _Size: uint32,
         _Byte: uint8,
@@ -77,9 +81,9 @@ class TestAliasing:
         assert obj2.cls is array
         assert obj2.args == (Header[uint32, uint8], T)
 
-        obj3 = obj2.resolve({T: self.Item})
-        assert obj3 is array[Header[uint32, uint8], self.Item]
-        assert obj.resolve(self.tvar_map) is array[Header[uint32, uint8], self.Item]
+        obj3 = obj2.resolve({T: Item})
+        assert obj3 is array[Header[uint32, uint8], Item]
+        assert obj.resolve(self.tvar_map) is array[Header[uint32, uint8], Item]
 
 
 def test_automatic_resolution():
@@ -104,3 +108,24 @@ def test_automatic_resolution():
     assert FullySpecialized1.attrs == FullySpecialized2.attrs
     assert FullySpecialized1.attrs == ('a', 'b', 'c')
     assert get_type_hints(FullySpecialized1) == get_type_hints(FullySpecialized2)
+
+
+def test_serialized_generics() -> None:
+    class Base(Generic[_Size], Structured):
+        a: list[_Size] = serialized(array[Header[3], _Size])
+
+    class Concrete(Base[uint32]):
+        pass
+
+    assert Concrete.attrs == ('a',)
+    target_data = struct.pack(f'3I', 1, 2, 3)
+    target_obj =  Concrete.create_unpack(target_data)
+    assert target_obj.a == [1, 2, 3]
+
+
+def test_errors() -> None:
+    class NotGeneric(Structured):
+        a: uint8
+
+    with pytest.raises(TypeError):
+        NotGeneric._specialize(uint8)

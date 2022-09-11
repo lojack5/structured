@@ -283,7 +283,7 @@ You can also create your `Structured` class as a `Generic`.  Due to details of h
 ```python
 class MyGeneric(Generic[T, U], Structured):
   a: T
-  b: array[Header[10], U]
+  b: list[U] = serializerd(array[Header[10], U])
 
 
 class ConcreteClass(MyGeneric[uint8, uint32]): pass
