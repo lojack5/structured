@@ -72,7 +72,7 @@ class char(_char):
         elif count is NET:
             new_cls = _net_char
         elif isinstance(count, TypeVar):
-            return StructuredAlias(cls, (count,))
+            return StructuredAlias(cls, (count,))   # type: ignore
         else:
             raise TypeError(
                 f'{cls.__qualname__}[] count must be an int, NET, or uint* '
@@ -154,11 +154,12 @@ class unicode(str, requires_indexing):
         :return: The specialized class.
         """
         if isinstance(count, TypeVar):
-            return StructuredAlias(cls, (count, encoding))
+            return StructuredAlias(cls, (count, encoding))  # type: ignore
         if isinstance(encoding, str):
             encoder = partial(str.encode, encoding=encoding)
             decoder = partial(bytes.decode, encoding=encoding)
-        elif isinstance(encoding, type) and issubclass(encoding, EncoderDecoder):
+        elif (isinstance(encoding, type) and
+              issubclass(encoding, EncoderDecoder)):
             encoder = encoding.encode
             decoder = encoding.decode
         else:
@@ -421,7 +422,12 @@ def unicode_wrap(
         def pack(self, *values: Any) -> bytes:
             return super().pack(self.encoder(values[0]))
 
-        def pack_into(self, buffer: WritableBuffer, offset: int, *values: str) -> None:
+        def pack_into(
+                self,
+                buffer: WritableBuffer,
+                offset: int,
+                *values: str,
+            ) -> None:
             super().pack_into(buffer, offset, self.encoder(values[0]))
 
         def pack_write(self, writable: SupportsWrite, *values: str) -> None:
@@ -430,7 +436,11 @@ def unicode_wrap(
         def unpack(self, buffer: ReadableBuffer) -> tuple[str]:
             return self.decoder(super().unpack(buffer)[0]).rstrip('\0'),
 
-        def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[str]:
+        def unpack_from(
+                self,
+                buffer: ReadableBuffer,
+                offset: int = 0,
+            ) -> tuple[str]:
             return self.decoder(
                 super().unpack_from(buffer, offset)[0]).rstrip('\0'),
 

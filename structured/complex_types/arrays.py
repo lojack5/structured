@@ -75,8 +75,10 @@ class array(list[U], requires_indexing, Generic[T, U]):
             header = Header[args[:-1]]
             array_type = args[-1]
         # TypeVar checks:
-        if isinstance(header, StructuredAlias) or isinstance(array_type, TypeVar):
-            return StructuredAlias(cls, (header, array_type))
+        if (isinstance(header, StructuredAlias) or
+            isinstance(array_type, TypeVar)):
+            return StructuredAlias(cls, (header, array_type))   # type: ignore
+        # Type checking
         if (not isinstance(header, type) or
             not issubclass(header, HeaderBase) or
             header is HeaderBase or

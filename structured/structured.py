@@ -34,7 +34,9 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
             if issubclass(attr_type, (format_type, Serializer)):
                 return True
             else:
-                raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
+                raise TypeError(
+                    f'Unknown structured type {attr_type.__qualname__}'
+                )
     return False
 
 
@@ -48,7 +50,10 @@ def serialized(kind: type[structured_type]) -> Any:
     return kind
 
 
-def filter_typehints(typehints: dict[str, Any], classdict: dict[str, Any]) -> dict[str, type[_Annotation]]:
+def filter_typehints(
+        typehints: dict[str, Any],
+        classdict: dict[str, Any],
+    ) -> dict[str, type[_Annotation]]:
     filtered = {
         attr: attr_type
         for attr, attr_type in typehints.items()
@@ -348,7 +353,8 @@ class Structured:
             base_to_origbase = {
                 origin: orig_base
                 for orig_base in orig_bases
-                if (origin := get_origin(orig_base)) and issubclass(origin, Structured)
+                if (origin := get_origin(orig_base))
+                    and issubclass(origin, Structured)
             }
             orig_base = base_to_origbase.get(base, None)
             if orig_base:

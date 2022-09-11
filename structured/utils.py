@@ -35,6 +35,9 @@ def specialized(base_cls: type, *args: Any) -> Callable[[type[_T]], type[_T]]:
 
 
 class StructuredAlias:
+    """Class to hold one of the structured types that takes types as arguments,
+    which has been passes either another StructuredAlias or a TypeVar.
+    """
     cls: type
     args: tuple
 
@@ -50,9 +53,12 @@ class StructuredAlias:
                 arg = arg.resolve(tvar_map)
             resolved.append(arg)
         resolved = tuple(resolved)
-        if any((isinstance(arg, (TypeVar, StructuredAlias)) for arg in resolved)):
+        if any((
+                isinstance(arg, (TypeVar, StructuredAlias))
+                for arg in resolved
+            )):
             # Act as immutable, so create a new instance, since these objects
             # are often cached in type factory indexing methods.
             return StructuredAlias(self.cls, resolved)
         else:
-            return self.cls[resolved]
+            return self.cls[resolved]   # type: ignore

@@ -119,8 +119,17 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
             )
 
     @classmethod
-    def specialize(cls, count: int, size_type: type[SizeTypes]) -> type[StaticCheckedHeader]:
-        """Specialize for the specific static size and check type."""
+    def specialize(
+            cls,
+            count: int,
+            size_type: type[SizeTypes],
+        ) -> type[StaticCheckedHeader]:
+        """Specialize for the specific static size and check type.
+
+        :param count: Static length for the array.
+        :param size_type: Type of integer to unpack for the array data size.
+        :return: The specialized Header class.
+        """
         if count <= 0:
             raise ValueError('count must be positive')
         class _StaticCheckedHeader(StaticCheckedHeader[size_type]):
@@ -145,7 +154,17 @@ class DynamicCheckedHeader(Generic[TCount, TSize], Structured, HeaderBase):
             )
 
     @classmethod
-    def specialize(cls, count_type: type[SizeTypes], size_type: type[SizeTypes]) -> type[DynamicCheckedHeader]:
+    def specialize(
+            cls,
+            count_type: type[SizeTypes],
+            size_type: type[SizeTypes]
+        ) -> type[DynamicCheckedHeader]:
+        """Specialize for the specific count type and check type.
+
+        :param count_type: Type of integer to unpack for the array length.
+        :param size_type: Type of integer to unpack for the array data size.
+        :return: The specialized Header class.
+        """
         class _DynamicCheckedHeader(DynamicCheckedHeader[count_type, size_type]): pass
         return _DynamicCheckedHeader
 
@@ -168,21 +187,40 @@ class Header(Structured, HeaderBase):
 
     @classmethod
     def create(cls, count, size_check=None):
+        """Intermediate method to pass through default args to the real cached
+        creation method.
+        """
         return cls._create(count, size_check)
 
     @classmethod
     @cache
-    def _create(cls, count: Union[int, type[SizeTypes]], size_check: Optional[type[SizeTypes]]) -> type[Header]:
+    def _create(
+            cls,
+            count: Union[int, type[SizeTypes]],
+            size_check: Optional[type[SizeTypes]]
+        ) -> type[Header]:
+        """Check header arguments and dispatch to the correct Header
+        specialization.
+
+        :param count: Static length or integer type to unpack for array length.
+        :param size_check: Integer type to unpack for array data size, or None
+            for no integer to unpack.
+        :return: The applicable Header specialization
+        """
         # TypeVar quick out.
         if isinstance(count, TypeVar) or isinstance(size_check, TypeVar):
             return StructuredAlias(cls, (count, size_check))    # type: ignore
         # Final type checking
         if size_check is not None:
-            if not isinstance(size_check, type) or not issubclass(size_check, _SizeTypes):
+            if not (isinstance(size_check, type) and
+                    issubclass(size_check, _SizeTypes)):
                 raise TypeError('size check must be a uint* type.')
         elif not isinstance(count, int):
-            if not isinstance(count, type) or not issubclass(count, _SizeTypes):
-                raise TypeError('array length must be an integer or uint* type.')
+            if not (isinstance(count, type) and
+                    issubclass(count, _SizeTypes)):
+                raise TypeError(
+                    'array length must be an integer or uint* type.'
+                )
         # Dispatch
         if size_check is None:
             args = (count, )
