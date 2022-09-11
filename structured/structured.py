@@ -19,6 +19,7 @@ from .basic_types import pad
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
     WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
+    get_annotations, update_annotations,
 )
 
 
@@ -359,12 +360,12 @@ class Structured:
             }
             orig_base = base_to_origbase.get(base, None)
             if orig_base:
-                annotation_updates, classdict_updates = base._specialize(
+                annotations, clsdict = base._get_specialization_hints(
                     *get_args(orig_base)
                 )
-                cls.__annotations__.update(annotation_updates)
+                update_annotations(cls, annotations)
                 # NOTE: cls.__dict__ is a mappingproxy
-                classdict = dict(classdict) | classdict_updates
+                classdict = dict(classdict) | clsdict
         # Analyze the class
         typehints = get_type_hints(cls)
         serializer, attrs = create_serializer(typehints, classdict, byte_order)
@@ -373,8 +374,16 @@ class Structured:
         cls.attrs = attrs
         cls.byte_order = byte_order
 
+
+
     @classmethod
-    def _specialize(cls, *args):
+    def _get_specialization_hints(
+            cls,
+            *args
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Get needed updates to __annotations__ and __dict if this class were
+        to be specialized with `args`,
+        """
         supers: dict[type[Structured], Any] = {}
         tvars = ()
         for base in getattr(cls, '__orig_bases__', ()):
@@ -388,8 +397,10 @@ class Structured:
         # First handle the direct base class
         annotations = {}
         classdict = {}
+        cls_annotations = get_annotations(cls)
+        cls_annotations = cls.__dict__.get('__annotations__', {})
         for attr, attr_type in get_type_hints(cls).items():
-            if attr in cls.__annotations__:
+            if attr in cls_annotations:
                 # Attribute's final type hint comes from this class
                 if remapped_type := tvar_map.get(attr_type, None):
                     annotations[attr] = remapped_type
@@ -404,7 +415,9 @@ class Structured:
         for base, alias in supers.items():
             args = get_args(alias)
             args = (tvar_map.get(arg, arg) for arg in args)
-            super_annotations, super_classdict = base._specialize(*args)
+            super_annotations, super_classdict = base._get_specialization_hints(
+                *args
+            )
             all_annotations.append(super_annotations)
             all_classdict.append(super_classdict)
         final_annotations = reduce(operator.or_, reversed(all_annotations))

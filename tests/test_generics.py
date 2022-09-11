@@ -128,4 +128,4 @@ def test_errors() -> None:
         a: uint8
 
     with pytest.raises(TypeError):
-        NotGeneric._specialize(uint8)
+        NotGeneric._get_specialization_hints(uint8)
