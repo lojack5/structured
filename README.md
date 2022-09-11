@@ -275,3 +275,16 @@ class MyStruct(Structured):
 ```
 
 No solution is perfect, and any type checker set to a strict level will complain about a lot of code.
+
+
+## Generic `Structured` classes
+You can also create your `Structured` class as a `Generic`.  Due to details of how `typing.Generic` works, to get a working specialized version, you must subclass the specialization:
+
+```python
+class MyGeneric(Generic[T, U], Structured):
+  a: T
+  b: array[Header[10], U]
+
+
+class ConcreteClass(MyGeneric[uint8, uint32]): pass
+```
