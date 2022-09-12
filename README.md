@@ -288,3 +288,17 @@ class MyGeneric(Generic[T, U], Structured):
 
 class ConcreteClass(MyGeneric[uint8, uint32]): pass
 ```
+
+One **limitation** here however, you cannot use a generic Structured class as an array object type.  It will act as the base class without specialization (See #8).  So for example, the following code will not work as you expect:
+```python
+class Item(Generic[T], Structured):
+  a: T
+
+class MyStruct(Generic[T], Structured):
+  items: array[Header[10], Item[T]]
+
+class Concrete(MyStruct[uint32]): pass
+
+assert Concrete.args == ('items', )
+> AssertionError
+```
