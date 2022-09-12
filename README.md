@@ -275,3 +275,30 @@ class MyStruct(Structured):
 ```
 
 No solution is perfect, and any type checker set to a strict level will complain about a lot of code.
+
+
+## Generic `Structured` classes
+You can also create your `Structured` class as a `Generic`.  Due to details of how `typing.Generic` works, to get a working specialized version, you must subclass the specialization:
+
+```python
+class MyGeneric(Generic[T, U], Structured):
+  a: T
+  b: list[U] = serializerd(array[Header[10], U])
+
+
+class ConcreteClass(MyGeneric[uint8, uint32]): pass
+```
+
+One **limitation** here however, you cannot use a generic Structured class as an array object type.  It will act as the base class without specialization (See #8).  So for example, the following code will not work as you expect:
+```python
+class Item(Generic[T], Structured):
+  a: T
+
+class MyStruct(Generic[T], Structured):
+  items: array[Header[10], Item[T]]
+
+class Concrete(MyStruct[uint32]): pass
+
+assert Concrete.args == ('items', )
+> AssertionError
+```

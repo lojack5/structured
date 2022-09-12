@@ -10,8 +10,9 @@ __all__ = [
 
 from functools import cache, partial
 import struct
+from typing import TypeVar
 
-from ..utils import specialized
+from ..utils import StructuredAlias, specialized
 from ..base_types import (
     Serializer, StructSerializer, requires_indexing, ByteOrder, struct_cache,
     structured_type, counted,
@@ -59,6 +60,7 @@ class char(_char):
         return cls._create(*args)
 
     @classmethod
+    @cache
     def _create(
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
@@ -69,6 +71,8 @@ class char(_char):
             new_cls = _dynamic_char[count]
         elif count is NET:
             new_cls = _net_char
+        elif isinstance(count, TypeVar):
+            return StructuredAlias(cls, (count,))   # type: ignore
         else:
             raise TypeError(
                 f'{cls.__qualname__}[] count must be an int, NET, or uint* '
@@ -117,11 +121,15 @@ class unicode(str, requires_indexing):
     :type encoding: Union[str, type[EncoderDecoder]]
     """
     @classmethod
-    @cache
     def __class_getitem__(cls, args) -> type[Serializer]:
         """Create the specialization."""
         if not isinstance(args, tuple):
             args = (args, )
+        # Cache doesn't place nice with default args,
+        # _create(uint8)
+        # _create(uint8, 'utf8')
+        # technically are different call types, so the cache isn't hit.
+        # Pass through an intermediary to take care of this.
         return cls.create(*args)
 
     @classmethod
@@ -130,16 +138,28 @@ class unicode(str, requires_indexing):
             count: Union[int, type[SizeTypes], type[NET]],
             encoding: Union[str, type[EncoderDecoder]] = 'utf8',
         ) -> type[Serializer]:
+        return cls._create(count, encoding)
+
+    @classmethod
+    @cache
+    def _create(
+            cls,
+            count: Union[int, type[SizeTypes], type[NET]],
+            encoding: Union[str, type[EncoderDecoder]],
+        ) -> type[Serializer]:
         """Create the specialization.
 
         :param count: Size of the *encoded* string.
         :param encoding: Encoding method to use.
         :return: The specialized class.
         """
+        if isinstance(count, TypeVar):
+            return StructuredAlias(cls, (count, encoding))  # type: ignore
         if isinstance(encoding, str):
             encoder = partial(str.encode, encoding=encoding)
             decoder = partial(bytes.decode, encoding=encoding)
-        elif isinstance(encoding, type) and issubclass(encoding, EncoderDecoder):
+        elif (isinstance(encoding, type) and
+              issubclass(encoding, EncoderDecoder)):
             encoder = encoding.encode
             decoder = encoding.decode
         else:
@@ -402,7 +422,12 @@ def unicode_wrap(
         def pack(self, *values: Any) -> bytes:
             return super().pack(self.encoder(values[0]))
 
-        def pack_into(self, buffer: WritableBuffer, offset: int, *values: str) -> None:
+        def pack_into(
+                self,
+                buffer: WritableBuffer,
+                offset: int,
+                *values: str,
+            ) -> None:
             super().pack_into(buffer, offset, self.encoder(values[0]))
 
         def pack_write(self, writable: SupportsWrite, *values: str) -> None:
@@ -411,7 +436,11 @@ def unicode_wrap(
         def unpack(self, buffer: ReadableBuffer) -> tuple[str]:
             return self.decoder(super().unpack(buffer)[0]).rstrip('\0'),
 
-        def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[str]:
+        def unpack_from(
+                self,
+                buffer: ReadableBuffer,
+                offset: int = 0,
+            ) -> tuple[str]:
             return self.decoder(
                 super().unpack_from(buffer, offset)[0]).rstrip('\0'),
 

@@ -14,6 +14,25 @@ else:
 _T = TypeVar('_T')
 
 
+def update_annotations(cls: type, annotations: dict[str, Any]) -> None:
+    """Python <3.10 compatible way to update a class's annotations dict. See:
+
+    https://docs.python.org/3/howto/annotations.html#accessing-the-annotations-dict-of-an-object-in-python-3-9-and-older
+    """
+    if '__annotations__' in cls.__dict__:
+        cls.__annotations__.update(annotations)
+    else:
+        setattr(cls, '__annotations__', annotations)
+
+def get_annotations(cls: type) -> dict[str, Any]:
+    """Python <3.10 compatible way to get a class's annotations dict.  See:
+
+    https://docs.python.org/3/howto/annotations.html#accessing-the-annotations-dict-of-an-object-in-python-3-9-and-older
+    """
+    return cls.__dict__.get('__annotations__', {})
+
+
+
 def isclassvar(annotation: Any) -> bool:
     """Determine if a type annotations is for a class variable.
 

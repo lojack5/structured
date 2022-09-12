@@ -1,4 +1,9 @@
 from __future__ import annotations
+import operator
+from typing import get_args, get_origin
+import typing
+
+from structured.utils import StructuredAlias
 
 __all__ = [
     'Structured',
@@ -14,6 +19,7 @@ from .basic_types import pad
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
     WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
+    get_annotations, update_annotations,
 )
 
 
@@ -29,7 +35,9 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
             if issubclass(attr_type, (format_type, Serializer)):
                 return True
             else:
-                raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
+                raise TypeError(
+                    f'Unknown structured type {attr_type.__qualname__}'
+                )
     return False
 
 
@@ -43,7 +51,10 @@ def serialized(kind: type[structured_type]) -> Any:
     return kind
 
 
-def filter_typehints(typehints: dict[str, Any], classdict: dict[str, Any]) -> dict[str, type[_Annotation]]:
+def filter_typehints(
+        typehints: dict[str, Any],
+        classdict: dict[str, Any],
+    ) -> dict[str, type[_Annotation]]:
     filtered = {
         attr: attr_type
         for attr, attr_type in typehints.items()
@@ -337,13 +348,78 @@ class Structured:
                     f'{base.__name__} ({base.byte_order.name}). '
                     'If this is intentional, use `byte_order_mode=OVERRIDE`.'
                 )
+        # Evaluta any generics in base class
+        classdict = cls.__dict__
+        if base:
+            orig_bases = getattr(cls, '__orig_bases__', ())
+            base_to_origbase = {
+                origin: orig_base
+                for orig_base in orig_bases
+                if (origin := get_origin(orig_base))
+                    and issubclass(origin, Structured)
+            }
+            orig_base = base_to_origbase.get(base, None)
+            if orig_base:
+                annotations, clsdict = base._get_specialization_hints(
+                    *get_args(orig_base)
+                )
+                update_annotations(cls, annotations)
+                # NOTE: cls.__dict__ is a mappingproxy
+                classdict = dict(classdict) | clsdict
         # Analyze the class
         typehints = get_type_hints(cls)
-        serializer, attrs = create_serializer(
-            typehints, cls.__dict__, byte_order
-        )
+        serializer, attrs = create_serializer(typehints, classdict, byte_order)
         # And set the updated class attributes
         cls.serializer = serializer
         cls.attrs = attrs
         cls.byte_order = byte_order
 
+
+
+    @classmethod
+    def _get_specialization_hints(
+            cls,
+            *args
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Get needed updates to __annotations__ and __dict if this class were
+        to be specialized with `args`,
+        """
+        supers: dict[type[Structured], Any] = {}
+        tvars = ()
+        for base in getattr(cls, '__orig_bases__', ()):
+            if (origin := get_origin(base)) is typing.Generic:
+                tvars = get_args(base)
+            elif origin and issubclass(origin, Structured):
+                supers[origin] = base
+        tvar_map = dict(zip(tvars, args))
+        if not tvar_map:
+            raise TypeError('{cls.__name__} is not a Generic')
+        # First handle the direct base class
+        annotations = {}
+        classdict = {}
+        cls_annotations = get_annotations(cls)
+        cls_annotations = cls.__dict__.get('__annotations__', {})
+        for attr, attr_type in get_type_hints(cls).items():
+            if attr in cls_annotations:
+                # Attribute's final type hint comes from this class
+                if remapped_type := tvar_map.get(attr_type, None):
+                    annotations[attr] = remapped_type
+                elif isinstance(attr_type, StructuredAlias):
+                    annotations[attr] = attr_type.resolve(tvar_map)
+        for attr, attr_val in cls.__dict__.items():
+            if isinstance(attr_val, StructuredAlias):
+                classdict[attr] = attr_val.resolve(tvar_map)
+        # Now any classes higher in the chain
+        all_annotations = [annotations]
+        all_classdict = [classdict]
+        for base, alias in supers.items():
+            args = get_args(alias)
+            args = (tvar_map.get(arg, arg) for arg in args)
+            super_annotations, super_classdict = base._get_specialization_hints(
+                *args
+            )
+            all_annotations.append(super_annotations)
+            all_classdict.append(super_classdict)
+        final_annotations = reduce(operator.or_, reversed(all_annotations))
+        final_classdict = reduce(operator.or_, reversed(all_classdict))
+        return final_annotations, final_classdict
