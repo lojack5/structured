@@ -9,6 +9,7 @@ __all__ = [
     'Structured',
     'ByteOrder', 'ByteOrderMode',
     'serialized',
+    'create_serializer',
 ]
 
 from functools import reduce
@@ -109,9 +110,23 @@ def create_struct(
 
 def create_serializer(
         typehints: dict[str, Any],
-        classdict: dict[str, Any],
-        byte_order: ByteOrder,
+        byte_order: ByteOrder = ByteOrder.DEFAULT,
+        classdict: Optional[dict[str, Any]] = None,
     ) -> tuple[Serializer, tuple[str, ...]]:
+    """Create a Serializer appropriate for packing/unpacking attributes.
+    Attributes are matched first by searching through `typhints` for names with
+    applicable Structured types.  Optionally (used internally for class
+    creation), a class dictionary can be passed as well, overriding hints from
+    the typhints dictionary.
+
+    :param typehints: Mapping of attribute names to types.
+    :param byte_order: Byte order to be used when unpacking/packing.
+    :param classdict: Optional second mapping of attribute names to types.
+    :return: A Serializer instance to use for packing/unpacking the matching
+        attributes, along with said attributes in the order they will be
+        serialized.
+    """
+    classdict = classdict if classdict is not None else {}
     applicable_hints = filter_typehints(typehints, classdict)
     hint_groups = split_typehints(applicable_hints)
     all_attrs: list[str] = []
@@ -228,8 +243,7 @@ class Structured:
         for attr, value in attrs_values.items():
             setattr(self, attr, value)
 
-    # Method prototypes for type checkers, actual implementations are created
-    # by the metaclass.
+    ## General packers/unpackers
     def unpack(self, buffer: ReadableBuffer) -> None:
         """Unpack values from the bytes-like `buffer` and assign them to members
 
@@ -290,6 +304,7 @@ class Structured:
             *(getattr(self, attr) for attr in self.attrs)
         )
 
+    ## Creation of objects from unpackable types
     @classmethod
     def create_unpack(cls: type[_C], buffer: ReadableBuffer) -> _C:
         return cls(*cls.serializer.unpack(buffer))
@@ -305,6 +320,41 @@ class Structured:
     @classmethod
     def create_unpack_read(cls: type[_C], readable: SupportsRead) -> _C:
         return cls(*cls.serializer.unpack_read(readable))
+
+    @classmethod
+    @cache
+    def create_attribute_serializer(cls, *attributes: str) -> tuple[Serializer, tuple[str, ...]]:
+        """Create a serializer for handling just the given attributes.  This may
+        be as simple as returning the default serializer, or returning a sub
+        serializer in a CompoundSerializer.  Otherwise, a new one will have to
+        be created.
+
+        :return: A serializer suitable for packing/unpacking the given
+            attributes.
+        """
+        attrs = set(attributes)
+        num_requested = len(attrs)
+        num_attrs = len(cls.attrs)
+        if num_requested < num_attrs:
+            # TODO: Say which ones
+            raise AttributeError('Attributes specified multiple times.')
+        if (unhandled := attrs - set(cls.attrs)):
+            raise AttributeError(
+                 'Cannot serialize the following attributes:\n'
+                f'{unhandled}\n'
+                 'If they are meant to be serailized, make sure to annotate '
+                 'them appropriately.'
+                )
+        # TODO: optimization possible?  Most of the calls here are cached
+        # already, so the most expensive part is the get_type_hints part.  But
+        # this method is cached too, so just go as is?
+        hints = {
+            attr: attr_type
+            for attr, attr_type in get_type_hints(cls).items()
+            if attr in attrs
+        }
+        return create_serializer(hints, cls.byte_order)
+
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
@@ -368,7 +418,7 @@ class Structured:
                 classdict = dict(classdict) | clsdict
         # Analyze the class
         typehints = get_type_hints(cls)
-        serializer, attrs = create_serializer(typehints, classdict, byte_order)
+        serializer, attrs = create_serializer(typehints, byte_order, classdict)
         # And set the updated class attributes
         cls.serializer = serializer
         cls.attrs = attrs

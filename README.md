@@ -169,7 +169,13 @@ format_string = MyStruct.serializer.format
 format_size = MyStruct.serializer.size
 ```
 
-Also provided is `attrs`, a tuple of attribute names handled by the serializer.  You can use this for debugging purposes to verify all of the attributes you expected to be packed/unpacked are actually touched by the class.
+You can also access the `attrs` class attribute, which is the attribute names handled by the class's serializer.
+
+For more advanced work, it is recommended to rework your class layout, or write your own custom `Serializer` class and annotate your types with it (See: structured/base_types.py for more information on the Serializer API).  In the case this is still not enough, you have access to two builder methods:
+
+- `structured.create_serializer`: This is used internally to create the serializers on the classes themselves.  You can call it with a typehints dictionary, and a byte order to use.  You can optionally pass in a second typhints-like dictionary to override anything in the typehints dictionary (this is only used in class creation, it should not be necessary in most cases).  The method returns back a `Serializer` instance, along with a tuple of attribute names the serializer packs and unpacks.
+- `Structured.create_attribute_serializer`: You can call this with attribute names on a `Structured` class to get a serializer which can pack and unpack the given attributes on the class.  Note that at the moment there is little sanity checking.  The resulting serializer will be set up to pack/unpack the given attributes *in the order they are defined on the class*.  Any gaps in the attribute layout are up to you to handle.
+
 
 ### Packing / Unpacking methods
 `Structured` classes provide a couple of ways to pack and unpack their values:
