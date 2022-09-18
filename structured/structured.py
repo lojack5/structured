@@ -17,6 +17,7 @@ import re
 
 from .base_types import *
 from .basic_types import pad, unwrap_annotated
+from .utils import deprecated
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
     WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
@@ -42,6 +43,7 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
     return False
 
 
+@deprecated('2.1.0', issue=5, use_instead='Annotated[unpacked_type, kind]')
 def serialized(kind: type[structured_type]) -> Any:
     """Type erasure for class definitions, allowing for linters to pick up the
     correct final type.  For example:

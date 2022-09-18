@@ -107,6 +107,9 @@ float64 = Annotated[float, _float64]
 def unwrap_annotated(x: Any) -> Any:
     if get_origin(x) is Annotated:
         for meta in (args := get_args(x)):
+            meta = unwrap_annotated(meta)   # Handle nested Annotateds, which
+            # could show up like this:
+            # b: Annotated[int, int8]
             if isinstance(meta, type) and issubclass(meta, format_type):
                 return meta
         else:
