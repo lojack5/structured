@@ -19,7 +19,7 @@ from itertools import chain
 
 from .base_types import Serializer, counted, format_type, noop_action
 from .type_checking import (
-    Annotated, Any, Callable, ClassVar, Container, Union, get_args, get_origin,
+    Annotated, Any, Callable, ClassVar, Container, get_args, get_origin,
 )
 from .utils import StructuredAlias, specialized
 

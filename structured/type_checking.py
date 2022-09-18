@@ -2,8 +2,7 @@ import sys
 import typing
 from typing import (
     Annotated, Any, Callable, ClassVar, Container, Generic, NoReturn, Optional,
-    Protocol, TypeVar, Union, cast, get_args, get_origin, get_type_hints,
-    runtime_checkable,
+    TypeVar, Union, cast, get_args, get_origin, get_type_hints, BinaryIO,
 )
 
 if sys.version_info < (3, 10):
@@ -40,47 +39,6 @@ def isclassvar(annotation: Any) -> bool:
     :param annotation: Fully resolved type annotation to test.
     """
     return get_origin(annotation) is ClassVar
-
-
-@runtime_checkable
-class _SupportsRead1(Protocol):
-    def read(self, size: Union[int, None] = ...) -> bytes: ...
-
-    def seek(self, offset: int, whence: int = ..., /) -> int: ...
-
-    def tell(self) -> int: ...
-
-
-@runtime_checkable
-class _SupportsRead2(Protocol):
-    def read(self, size: Union[int, None] = ..., /) -> bytes: ...
-
-    def seek(self, offset: int, whence: int = ..., /) -> int: ...
-
-    def tell(self) -> int: ...
-
-SupportsRead: TypeAlias = Union[_SupportsRead1, _SupportsRead2]
-
-
-@runtime_checkable
-class _SupportsWrite1(Protocol):
-    def write(self, data: bytes) -> int: ...
-
-    def seek(self, offset: int, whence: int = ..., /) -> int: ...
-
-    def tell(self) -> int: ...
-
-
-@runtime_checkable
-class _SupportsWrite2(Protocol):
-    def write(self, buffer: 'ReadableBuffer', /) -> int: ...
-
-    def seek(self, offset: int, whence: int = ..., /) -> int: ...
-
-    def tell(self) -> int: ...
-
-
-SupportsWrite: TypeAlias = Union[_SupportsWrite1, _SupportsWrite2]
 
 
 if typing.TYPE_CHECKING:

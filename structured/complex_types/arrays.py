@@ -17,8 +17,8 @@ from ..base_types import (
 )
 from ..basic_types import *
 from ..type_checking import (
-    Annotated, Any, ClassVar, Generic, NoReturn, ReadableBuffer, SupportsRead,
-    SupportsWrite, TypeVar, WritableBuffer, get_type_hints,
+    Annotated, Any, ClassVar, Generic, NoReturn, ReadableBuffer, BinaryIO,
+    TypeVar, WritableBuffer, get_type_hints,
 )
 from ..utils import specialized
 from .array_headers import *
@@ -176,7 +176,7 @@ class _structured_array(Serializer):
         self.header.data_size = self.size - header_size
         self.header.pack_into(buffer, offset)
 
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack an array and write it to a file-like object."""
         items: list[Structured] = values[0]
         self.header.count = len(items)
@@ -224,7 +224,7 @@ class _structured_array(Serializer):
         self.header.validate_data_size(data_size)
         return items,
 
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack an array from a file-like object."""
         self.header.unpack_read(readable)
         self.size = self.header.serializer.size
@@ -301,7 +301,7 @@ class _format_array(Serializer):
         """
         self.serializer.pack_into(buffer, offset, *self._check_arr(values))
 
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack an array of the appropriate size and write it to a file-like
         object.
 
@@ -326,7 +326,7 @@ class _format_array(Serializer):
         """
         return list(self.serializer.unpack_from(buffer, offset)),
 
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack an array from a readable object.
 
         :param readable: The readable file-like object to unpack from
@@ -401,7 +401,7 @@ class _dynamic_format_array(Serializer):
         arr, count, st = self._arr_count_st(values)
         st.pack_into(buffer, offset, count, *arr)
 
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack an array and write it to a file-like object.
 
         :param writable: A writable file-like object.
@@ -440,7 +440,7 @@ class _dynamic_format_array(Serializer):
         st = self._st(count)
         return list(st.unpack_from(buffer, offset + self.header.size)),
 
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack an array from a readable file-like object.
 
         :param readable: A readable file-like object.

@@ -17,8 +17,8 @@ from ..base_types import (
 )
 from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..type_checking import (
-    Annotated, Any, Callable, ClassVar, ReadableBuffer, SupportsRead,
-    SupportsWrite, TypeVar, Union, WritableBuffer, cast,
+    Annotated, Any, Callable, ClassVar, ReadableBuffer, BinaryIO, TypeVar,
+    Union, WritableBuffer, cast,
 )
 from ..utils import StructuredAlias
 
@@ -253,7 +253,7 @@ class _dynamic_char(Serializer):
         st, count, raw = self._st_count_data(values)
         st.pack_into(buffer, offset, count, raw)
 
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack a dynamically sized bytestring and write it to a file-like
         object.
 
@@ -286,7 +286,7 @@ class _dynamic_char(Serializer):
         st = struct_cache(f'{count}s')
         return st.unpack_from(buffer, offset + self.st.size)
 
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack a dynamically sized bytestring from a file-like object.
 
         :param readable: A readable file-like object.
@@ -349,7 +349,7 @@ class _net_char(Serializer):
         st, count_mark, raw = self._st_count_data(values)
         st.pack_into(buffer, offset, count_mark, raw)
 
-    def pack_write(self, writable: SupportsWrite, *values: bytes) -> None:
+    def pack_write(self, writable: BinaryIO, *values: bytes) -> None:
         st, count_mark, raw = self._st_count_data(values)
         writable.write(st.pack(count_mark, raw))
 
@@ -386,7 +386,7 @@ class _net_char(Serializer):
         self.size = size + count
         return struct.unpack_from(f'{count}s', buffer, offset + size)
 
-    def unpack_read(self, readable: SupportsRead) -> tuple[bytes]:
+    def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
         count_pos = readable.tell()
         count = self.short_len.unpack_read(readable)[0]
         if count >= 128:
@@ -428,7 +428,7 @@ def unicode_wrap(
             ) -> None:
             super().pack_into(buffer, offset, self.encoder(values[0]))
 
-        def pack_write(self, writable: SupportsWrite, *values: str) -> None:
+        def pack_write(self, writable: BinaryIO, *values: str) -> None:
             super().pack_write(writable, self.encoder(values[0]))
 
         def unpack(self, buffer: ReadableBuffer) -> tuple[str]:
@@ -442,6 +442,6 @@ def unicode_wrap(
             return self.decoder(
                 super().unpack_from(buffer, offset)[0]).rstrip('\0'),
 
-        def unpack_read(self, readable: SupportsRead) -> tuple[str]:
+        def unpack_read(self, readable: BinaryIO) -> tuple[str]:
             return self.decoder(super().unpack_read(readable)[0]).rstrip('\0'),
     return _unicode

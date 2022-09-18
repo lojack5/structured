@@ -16,10 +16,9 @@ from structured.utils import StructuredAlias
 from .base_types import *
 from .basic_types import pad, unwrap_annotated
 from .type_checking import (
-    Any, ClassVar, Generic, Optional, ReadableBuffer, SupportsRead,
-    SupportsWrite, TypeGuard, TypeVar, Union, WritableBuffer, cast,
-    get_annotations, get_args, get_origin, get_type_hints, isclassvar,
-    update_annotations,
+    Any, ClassVar, Generic, Optional, ReadableBuffer, BinaryIO, TypeGuard,
+    TypeVar, Union, WritableBuffer, cast, get_annotations, get_args, get_origin,
+    get_type_hints, isclassvar, update_annotations,
 )
 from .utils import deprecated
 
@@ -292,7 +291,7 @@ class Structured:
         for attr, value in zip(self.attrs, self.serializer.unpack(buffer)):
             setattr(self, attr, value)
 
-    def unpack_read(self, readable: SupportsRead) -> None:
+    def unpack_read(self, readable: BinaryIO) -> None:
         """Read data from a file-like object and unpack it into values, assigned
         to this class's attributes.
 
@@ -320,7 +319,7 @@ class Structured:
             *(getattr(self, attr) for attr in self.attrs)
         )
 
-    def pack_write(self, writable: SupportsWrite) -> None:
+    def pack_write(self, writable: BinaryIO) -> None:
         """Pack the class's values according to the format string, then write
         the result to a file-like object.
 
@@ -371,7 +370,7 @@ class Structured:
         return cls(*cls.serializer.unpack_from(buffer, offset))
 
     @classmethod
-    def create_unpack_read(cls: type[_C], readable: SupportsRead) -> _C:
+    def create_unpack_read(cls: type[_C], readable: BinaryIO) -> _C:
         """Create a new instance, initialized with values unpacked from a
         readable file-like object.
 
