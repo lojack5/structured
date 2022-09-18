@@ -56,7 +56,7 @@ from enum import Enum
 from .utils import specialized
 from .type_checking import (
     ClassVar, Callable, Any, _T, ReadableBuffer, WritableBuffer, SupportsRead,
-    SupportsWrite,
+    SupportsWrite, Annotated,
 )
 
 
@@ -125,7 +125,7 @@ class counted(format_type):
         @specialized(cls, count)
         class _counted(cls):
             format: ClassVar[str] = f'{count}{cls.format}'
-        return _counted
+        return Annotated[cls, _counted]
 
 
 class Serializer(structured_type):

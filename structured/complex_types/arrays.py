@@ -21,7 +21,7 @@ from ..basic_types import *
 from ..utils import specialized
 from ..type_checking import (
     Union, ReadableBuffer, WritableBuffer, SupportsRead, SupportsWrite, Any,
-    NoReturn, ClassVar, Generic, TypeVar,
+    NoReturn, ClassVar, Generic, TypeVar, Annotated,
 )
 
 
@@ -124,20 +124,20 @@ class array(list[U], requires_indexing, Generic[T, U]):
                 class _array1(_format_array):
                     count: ClassVar[int] = header._count
                     obj_type: ClassVar[type[format_type]] = array_type
-                return _array1
+                return Annotated[list[U], _array1]
             else:
                 count = get_type_hints(header)['count']
                 @specialized(cls, header, array_type)
                 class _array2(_dynamic_format_array):
                     count_type: ClassVar[type[SizeTypes]] = count
                     obj_type: ClassVar[type[format_type]] = array_type
-                return _array2
+                return Annotated[list[U], _array2]
         else:
             @specialized(cls, header, array_type)
             class _array3(_structured_array):
                 header_type: ClassVar[type[Header]] = header
                 obj_type: ClassVar[type[Structured]] = array_type
-            return _array3
+            return Annotated[list[U], _array3]
 
 
 class _structured_array(Serializer):

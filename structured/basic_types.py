@@ -2,6 +2,7 @@
 All of the basic format types that map directly to struct format specifiers.
 """
 from __future__ import annotations
+from itertools import chain
 
 
 __all__ = [
@@ -18,7 +19,7 @@ __all__ = [
 
 from functools import cache
 
-from .base_types import format_type, counted, noop_action
+from .base_types import format_type, counted, noop_action, Serializer
 from .utils import specialized
 from .type_checking import (
     ClassVar, Callable, Any, Annotated, get_args, get_origin, Union, Container,
@@ -104,19 +105,6 @@ class _float64(format_type):
 float64 = Annotated[float, _float64]
 
 
-def unwrap_annotated(x: Any) -> Any:
-    if get_origin(x) is Annotated:
-        for meta in (args := get_args(x)):
-            meta = unwrap_annotated(meta)   # Handle nested Annotateds, which
-            # could show up like this:
-            # b: Annotated[int, int8]
-            if isinstance(meta, type) and issubclass(meta, format_type):
-                return meta
-        else:
-            return args[0]
-    return x
-
-
 # NOTE: char moved to complex_types/unicode.py, since it can optionally
 # be created with a dynamic size.
 
@@ -126,6 +114,30 @@ class pascal(str, counted):
     documentation for specific details.
     """
     format: ClassVar[str] = 'p'
+
+
+_AnnotatedTypes = (
+    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64,
+    float16, float32, float64,
+)
+_UnAnnotatedTypes = (
+    pad, pascal,
+)
+_AllTypes = tuple(chain(_AnnotatedTypes, _UnAnnotatedTypes))
+
+
+def unwrap_annotated(x: Any) -> Any:
+    if get_origin(x) is Annotated:
+        if (args := get_args(x)):
+            for meta in args[1:]:
+                meta = unwrap_annotated(meta)   # Handle nested Annotateds, which
+                # could show up like this:
+                # b: Annotated[int, int8]
+                if isinstance(meta, type) and issubclass(meta, (format_type, Serializer)):
+                    return meta
+            else:
+                return args[0]
+    return x
 
 
 TTypes = Union[

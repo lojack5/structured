@@ -3,13 +3,14 @@ import io
 import pytest
 
 from structured import *
+from structured.basic_types import unwrap_annotated
 
 
 ## Only tests needed for lines not tested by Structured tests
 
 
 def test_counted() -> None:
-    cls = pad[2]
+    cls = unwrap_annotated(pad[2])
     assert cls.format == '2x'
     assert cls.__qualname__ == 'pad[2]'
 

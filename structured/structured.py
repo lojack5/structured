@@ -445,7 +445,7 @@ class Structured:
                 supers[origin] = base
         tvar_map = dict(zip(tvars, args))
         if not tvar_map:
-            raise TypeError('{cls.__name__} is not a Generic')
+            raise TypeError(f'{cls.__name__} is not a Generic')
         # First handle the direct base class
         annotations = {}
         classdict = {}
