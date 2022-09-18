@@ -9,6 +9,9 @@ from structured.basic_types import (
 from structured.base_types import format_type, requires_indexing
 
 
+class A: pass
+
+
 def test_eval_annotation() -> None:
     # Prior versions of the code would fail to evaluate `ClassVar[A]`
     class Base(Structured):
@@ -56,4 +59,13 @@ def test_for_annotated() -> None:
     assert get_origin(unicode[uint32]) is Annotated
 
 
-class A: pass
+def test_alternate_syntax() -> None:
+    # Test using only Annotated
+    class Base(Structured):
+        a: Annotated[int, int8]
+        b: Annotated[bytes, char[10]]
+        c: Annotated[str, unicode[15]]
+        d: Annotated[list[int8], array[Header[2], int8]]
+        e: Annotated[None, pad[3]]
+    assert Base.attrs == ('a', 'b', 'c', 'd', )
+

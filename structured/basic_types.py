@@ -20,7 +20,7 @@ __all__ = [
 from functools import cache
 
 from .base_types import format_type, counted, noop_action, Serializer
-from .utils import specialized
+from .utils import specialized, StructuredAlias
 from .type_checking import (
     ClassVar, Callable, Any, Annotated, get_args, get_origin, Union, Container,
 )
@@ -134,6 +134,8 @@ def unwrap_annotated(x: Any) -> Any:
                 # could show up like this:
                 # b: Annotated[int, int8]
                 if isinstance(meta, type) and issubclass(meta, (format_type, Serializer)):
+                    return meta
+                elif isinstance(meta, StructuredAlias):
                     return meta
             else:
                 return args[0]

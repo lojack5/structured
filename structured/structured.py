@@ -452,14 +452,16 @@ class Structured:
         cls_annotations = get_annotations(cls)
         for attr, attr_type in get_type_hints(cls, include_extras=True).items():
             if attr in cls_annotations:
+                unwrapped = unwrap_annotated(attr_type)
                 # Attribute's final type hint comes from this class
-                if remapped_type := tvar_map.get(attr_type, None):
+                if remapped_type := tvar_map.get(unwrapped, None):
                     annotations[attr] = remapped_type
-                elif isinstance(attr_type, StructuredAlias):
-                    annotations[attr] = attr_type.resolve(tvar_map)
+                elif isinstance(unwrapped, StructuredAlias):
+                    annotations[attr] = unwrapped.resolve(tvar_map)
         for attr, attr_val in cls.__dict__.items():
-            if isinstance(attr_val, StructuredAlias):
-                classdict[attr] = attr_val.resolve(tvar_map)
+            unwrapped = unwrap_annotated(attr_val)
+            if isinstance(unwrapped, StructuredAlias):
+                classdict[attr] = unwrapped.resolve(tvar_map)
         # Now any classes higher in the chain
         all_annotations = [annotations]
         all_classdict = [classdict]
