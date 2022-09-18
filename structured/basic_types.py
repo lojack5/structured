@@ -2,8 +2,6 @@
 All of the basic format types that map directly to struct format specifiers.
 """
 from __future__ import annotations
-from itertools import chain
-
 
 __all__ = [
     'pad', 'bool8',
@@ -16,14 +14,14 @@ __all__ = [
     'Formatted',
 ]
 
-
 from functools import cache
+from itertools import chain
 
-from .base_types import format_type, counted, noop_action, Serializer
-from .utils import specialized, StructuredAlias
+from .base_types import Serializer, counted, format_type, noop_action
 from .type_checking import (
-    ClassVar, Callable, Any, Annotated, get_args, get_origin, Union, Container,
+    Annotated, Any, Callable, ClassVar, Container, Union, get_args, get_origin,
 )
+from .utils import StructuredAlias, specialized
 
 
 class pad(counted):

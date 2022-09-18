@@ -1,15 +1,15 @@
 import sys
 import typing
 from typing import (
-    Annotated, Any, Callable, ClassVar, Generic, NoReturn, Optional, Protocol,
-    TypeVar, Union, cast, get_args, get_origin, get_type_hints,
-    runtime_checkable, Container,
+    Annotated, Any, Callable, ClassVar, Container, Generic, NoReturn, Optional,
+    Protocol, TypeVar, Union, cast, get_args, get_origin, get_type_hints,
+    runtime_checkable,
 )
 
 if sys.version_info < (3, 10):
-    from typing_extensions import TypeAlias, TypeGuard
+    from typing_extensions import ParamSpec, TypeAlias, TypeGuard
 else:
-    from typing import TypeAlias, TypeGuard
+    from typing import ParamSpec, TypeAlias, TypeGuard
 
 
 _T = TypeVar('_T')

@@ -8,20 +8,19 @@ __all__ = [
     'NET',
 ]
 
-from functools import cache, partial
 import struct
-from typing import TypeVar
+from functools import cache, partial
 
-from ..utils import StructuredAlias, specialized
 from ..base_types import (
-    Serializer, StructSerializer, requires_indexing, ByteOrder, struct_cache,
-    structured_type, counted,
+    ByteOrder, Serializer, StructSerializer, counted, requires_indexing,
+    struct_cache,
 )
 from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..type_checking import (
-    ClassVar, ReadableBuffer, SupportsRead, Any, SupportsWrite, WritableBuffer,
-    Union, Callable, cast, Annotated
+    Annotated, Any, Callable, ClassVar, ReadableBuffer, SupportsRead,
+    SupportsWrite, TypeVar, Union, WritableBuffer, cast,
 )
+from ..utils import StructuredAlias
 
 
 _SizeTypes = (_uint8, _uint16, _uint32, _uint64)    # py 3.9 isinstance/subclass

@@ -1,9 +1,4 @@
 from __future__ import annotations
-import operator
-from typing import get_args, get_origin
-import typing
-
-from structured.utils import StructuredAlias
 
 __all__ = [
     'Structured',
@@ -12,20 +7,25 @@ __all__ = [
     'create_serializer',
 ]
 
-from functools import reduce
+import operator
 import re
+from functools import reduce
+
+from structured.utils import StructuredAlias
 
 from .base_types import *
 from .basic_types import pad, unwrap_annotated
-from .utils import deprecated
 from .type_checking import (
-    Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
-    WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
-    get_annotations, update_annotations,
+    Any, ClassVar, Generic, Optional, ReadableBuffer, SupportsRead,
+    SupportsWrite, TypeGuard, TypeVar, Union, WritableBuffer, cast,
+    get_annotations, get_args, get_origin, get_type_hints, isclassvar,
+    update_annotations,
 )
+from .utils import deprecated
 
 
 _Annotation = Union[format_type, Serializer]
+
 
 def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
     if isclassvar(attr_type):
@@ -439,7 +439,7 @@ class Structured:
         supers: dict[type[Structured], Any] = {}
         tvars = ()
         for base in getattr(cls, '__orig_bases__', ()):
-            if (origin := get_origin(base)) is typing.Generic:
+            if (origin := get_origin(base)) is Generic:
                 tvars = get_args(base)
             elif origin and issubclass(origin, Structured):
                 supers[origin] = base

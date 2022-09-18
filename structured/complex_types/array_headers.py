@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from functools import cache
 
-from ..utils import StructuredAlias, specialized
-from ..structured import Structured
 from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
-from ..type_checking import ClassVar, Union, Generic, Optional, TypeVar
+from ..structured import Structured
+from ..type_checking import ClassVar, Generic, Optional, TypeVar, Union
+from ..utils import StructuredAlias, specialized
 
 
 _SizeTypes = (_uint8, _uint16, _uint32, _uint64)

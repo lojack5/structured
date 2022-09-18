@@ -2,27 +2,26 @@
 Array types
 """
 from __future__ import annotations
-from typing import get_type_hints
 
 __all__ = [
     'array', 'Header',
 ]
 
 import io
-from itertools import repeat
 from functools import cache
+from itertools import repeat
 
-from .array_headers import *
 from ..base_types import (
-    Serializer, StructSerializer, format_type, requires_indexing, struct_cache,
-    ByteOrder,
+    ByteOrder, Serializer, StructSerializer, format_type, requires_indexing,
+    struct_cache,
 )
 from ..basic_types import *
-from ..utils import specialized
 from ..type_checking import (
-    Union, ReadableBuffer, WritableBuffer, SupportsRead, SupportsWrite, Any,
-    NoReturn, ClassVar, Generic, TypeVar, Annotated,
+    Annotated, Any, ClassVar, Generic, NoReturn, ReadableBuffer, SupportsRead,
+    SupportsWrite, TypeVar, WritableBuffer, get_type_hints,
 )
+from ..utils import specialized
+from .array_headers import *
 
 
 T = TypeVar('T', bound=Header)

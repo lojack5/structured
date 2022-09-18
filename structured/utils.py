@@ -2,9 +2,11 @@
 Various utility methods.
 """
 import warnings
-from typing import ParamSpec, TypeVar
 from functools import wraps
-from .type_checking import _T, NoReturn, Any, Callable, Optional
+
+from .type_checking import (
+    _T, Any, Callable, NoReturn, Optional, ParamSpec, TypeVar,
+)
 
 
 @classmethod
