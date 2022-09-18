@@ -86,9 +86,9 @@ def _stringify(x: Any) -> str:
 def _issue_url(issue: int) -> str:
     return f'https://github.com/lojack5/structured/issuespython-trio/trio/issues/{issue}'
 
-def warn_deprecated(x: Any, version: str, *, issue: Optional[int], use_instead: Any, stacklevel: int = 2) -> None:
+def warn_deprecated(x: Any, version: str, removal: str, *, issue: Optional[int], use_instead: Any, stacklevel: int = 2) -> None:
     stacklevel += 1
-    msg = f'{_stringify(x)} is deprecated since Structured {version}'
+    msg = f'{_stringify(x)} is deprecated since structured-classes {version} and will be removed in structured-classes {removal}'
     if use_instead is None:
         msg += ' with no replacement'
     else:
@@ -101,13 +101,13 @@ def warn_deprecated(x: Any, version: str, *, issue: Optional[int], use_instead: 
 P = ParamSpec('P')
 T = TypeVar('T')
 # @deprecated("0.2.0", issue=..., use_instead=...)
-def deprecated(version: str, *, x: Any = None, issue: int, use_instead: Any) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def deprecated(version: str, removal: str, *, x: Any = None, issue: int, use_instead: Any) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def inner(fn: Callable[P, T]) -> Callable[P, T]:
         nonlocal x
 
         @wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            warn_deprecated(x, version, use_instead=use_instead, issue=issue)
+            warn_deprecated(x, version, removal, use_instead=use_instead, issue=issue)
             return fn(*args, **kwargs)
 
         # If our __module__ or __qualname__ get modified, we want to pick up

@@ -121,7 +121,7 @@ class unicode(str, requires_indexing):
     :type encoding: Union[str, type[EncoderDecoder]]
     """
     @classmethod
-    def __class_getitem__(cls, args) -> type[Serializer]:
+    def __class_getitem__(cls, args) -> type[str]:
         """Create the specialization."""
         if not isinstance(args, tuple):
             args = (args, )
@@ -137,7 +137,7 @@ class unicode(str, requires_indexing):
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
             encoding: Union[str, type[EncoderDecoder]] = 'utf8',
-        ) -> type[Serializer]:
+        ) -> type[str]:
         return cls._create(count, encoding)
 
     @classmethod
@@ -146,7 +146,7 @@ class unicode(str, requires_indexing):
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
             encoding: Union[str, type[EncoderDecoder]],
-        ) -> type[Serializer]:
+        ) -> type[str]:
         """Create the specialization.
 
         :param count: Size of the *encoded* string.

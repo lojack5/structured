@@ -180,10 +180,13 @@ For more advanced work, it is recommended to rework your class layout, or write 
 ### Packing / Unpacking methods
 `Structured` classes provide a couple of ways to pack and unpack their values:
  - `Structured.unpack(byteslike)`: Unpacks values from a bytes-like object and sets the instance's variables.
- - `Structured.unpack_from(buffer, offset = 0)`: Unpacks values from an object supporting the [buffer protocol](https://docs.python.org/3/c-api/buffer.html) and sets the instance's variables.
+ - `Structured.unpack_from(buffer, offset = 0)`: Unpacks values from an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html) and sets the instance's variables.
  - `Structured.unpack_read(readable)`: Reads data from a file-like object, unpacks, and sets the instance's variables.
  - `Structured.pack()`: Packs the instance's variables, returning `bytes`.
- - `Structured.pack_int(buffer, offset = 0)`: Packs the instance's variables into an object supporting the [buffer protocol](https://docs.python.org/3/c-api/buffer.html)
+ - `Structured.pack_int(buffer, offset = 0)`: Packs the instance's variables into an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html).
+ - `Structured.create_unpack(byteslike)`: Creates new object with values unpacked from a bytes-like object.
+ - `Structured.create_unpack_from(buffer, offset = 0)`: Creates a new object with values unpacked from an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html).
+ - `Structured.create_unpack_read(readable)`: Creates a new object with values unpacked from a readable file-like object.
 
 
 ## Advanced types
@@ -245,42 +248,33 @@ class MyStruct(Structured):
 
 
 ## Notes of type checkers / IDEs
-For the most part, `structured` should work with type checkers set to basic levels.  The annotated types are subclasses of their python equivalents:
-- `int*` and `uint*` are subclasses of `int`.
-- `float*` are subclasses of `float`.
-- `bool8` is a subclass of `int`.  This is because `bool` cannot be subclassed.
-- `char` and `pascal` are subclasses of `bytes`.
-- `array` is a subclass of `list`.
-- `unicode` is a subclass of `str`.
+For the most part, `structured` should work with type checkers set to basic levels.  The annotated types present as their unpacked types with a few exceptions.  This is accomplised by using `typing.Annotated`.
+- `int*` and `uint*` present as an `int`
+- `float*` present as `float`.
+- `bool8` presents as `int`.  This may change to `bool` in the future, but it's this way currently because the `?` format specifier packs/unpacks as an `int`.
+- `char` and `pascal` are subclasses of `bytes`, so they have the typechecker limitations below.
+- `array[<Header>, T]` is a subclass of `list[T]`, so it has the typechecker limitations below.
+- `unicode` is a subclass of `str`, so it has the typechecker limitations below.
 
-The trick here is that all of these types are not actually unpacked as their type.  For example an attribute marked as `array[Header[4], int8]` is unpacked as a `list[int]`.  So for the most part, type checkers will correctly identify what methods are available to each type.
-
-The exception is assigning values to attributes, and iterating over `array`s.  For example:
+The limitations for types that are subclasses of their intended type, rather than `Annotated` as such, is most typecheckers will warn you about assignment.  For example:
 ```python
 class MyStruct(Structured):
-  a: int8
+  items: array[Header[3], int8]
 
-o = MyStruct(1)
-o.a = 2
+a = MyStruct([1, 2, 3])
+a.items = [4, 5, 6]   # Warning about incompatibility between list and array
 ```
-Most type checkers will warn on setting `o.a = 2`, as `int` and `int8` are incompatible here.  Similarly,
+
+To resolve this, you will have to use an alternative syntax: `Annotated`:
 ```python
 class MyStruct(Structured):
-  a: array[Header[2], int8]
-o = MyStruct([1, 2])
+  items: Annotated[list[int8], array[Header[3], int8]]
 
-o.a[1] = 2
-```
-Most type checkers will warn again, saying `int` is incompatible with `int8`.
-
-One workaround is to use the `serialized` method during class creation.  This allows you to hint the type as it's actual unpacked type, but still inform the `Structured` class how to pack/unpack it:
-```python
-class MyStruct(Structured):
-  a: int = serialized(int8)
-  b: list[int] = serialized(array[Header[2], int8])
+a = MyStruct([1, 2, 3])
+a.items = [4, 5, 6]   # Ok!
 ```
 
-No solution is perfect, and any type checker set to a strict level will complain about a lot of code.
+NOTE: In older versions, it was recommened to use `serialized`.  This method has been deprecated and will be removed in `3.0`.
 
 
 ## Generic `Structured` classes

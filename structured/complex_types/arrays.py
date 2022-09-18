@@ -74,7 +74,7 @@ class array(list[U], requires_indexing, Generic[T, U]):
     def __class_getitem__(
             cls,
             args: tuple[type[T], type[U]]
-        ) -> type[Serializer]:
+        ) -> type[list[U]]:
         """Perform error checks and dispatch to the applicable class factory."""
         if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
@@ -109,8 +109,8 @@ class array(list[U], requires_indexing, Generic[T, U]):
     def _create(
             cls,
             header: type[Header],
-            array_type: type[U]
-        ) -> type[Serializer]:
+            array_type: type[U],
+        ) -> type[list[U]]:
         """Actual creation of the header."""
         if issubclass(array_type, format_type):
             if issubclass(header, (StaticCheckedHeader, DynamicCheckedHeader)):
