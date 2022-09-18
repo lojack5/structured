@@ -125,28 +125,45 @@ _AllTypes = tuple(chain(_AnnotatedTypes, _UnAnnotatedTypes))
 
 
 def unwrap_annotated(x: Any) -> Any:
+    """Recursively unwrap an Annotated type annotation, searching for one of:
+    - A format_type class
+    - A Serializer class
+    - A StructuredAlias instance
+    If none are found, returns the Annotated type (ie: in Annotated[int, ...],
+    returns int).  If the annotation isn't an Annotated, returns the original
+    annotation.
+
+    :param x: Type annotation to unwrap.
+    :return: The (possibly unwrapped) final annotation.
+    """
     if get_origin(x) is Annotated:
         if (args := get_args(x)):
             for meta in args[1:]:
-                meta = unwrap_annotated(meta)   # Handle nested Annotateds, which
-                # could show up like this:
+                # Annotated can be nested, ex:
                 # b: Annotated[int, int8]
-                if isinstance(meta, type) and issubclass(meta, (format_type, Serializer)):
-                    return meta
+                meta = unwrap_annotated(meta)
+                if isinstance(meta, type):
+                    if issubclass(meta, (format_type, Serializer)):
+                        return meta
                 elif isinstance(meta, StructuredAlias):
                     return meta
             else:
+                # Annotated, but not one of the special types we're looking for
                 return args[0]
+    # Not Annotated
     return x
 
 
-TTypes = Union[
-    # Can be exactly one of the Annotated types
-    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
-    float32, float64,
-    # Or any format_type
-    format_type,
-]
+## NOTE: This typehint isn't working how I want.  The issue is stemming from
+## using Annotated instances, and wanting the type to be one of those, or a
+## subclass of format_type.  Look into if this is even possible with hints.
+#TTypes = Union[
+#    # Can be exactly one of the Annotated types
+#    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
+#    float32, float64,
+#    # Or any format_type
+#    format_type,
+#]
 class Formatted(format_type):
     """Class used for creating new `format_type`s.  Provides a class getitem
     to select the format specifier, by grabbing from one of the provided format
@@ -154,7 +171,7 @@ class Formatted(format_type):
 
     For examples of how to use this, see `TestFormatted`.
     """
-    _types: ClassVar[Container[TTypes]] = frozenset()
+    _types: ClassVar[Container] = frozenset()   # Container[TType]?
 
     @classmethod    # Need to remark as classmethod since we're caching
     @cache
@@ -162,6 +179,14 @@ class Formatted(format_type):
             cls: type[Formatted],
             key: type[format_type],
         ) -> type[Formatted]:
+        """Create an version of this class which uses the given types format
+        specifier for packing/unpacking.
+
+        :param key: A format type this type encapsulates (int*, uint*, etc)
+        :raises TypeError: If an invalid type is passed, or if the type is not
+            included in this class's `_types` container.
+        :return: An Annotated with the specialied information.
+        """
         unwrapped = unwrap_annotated(key)
         # Error checking
         if not issubclass(unwrapped, format_type):

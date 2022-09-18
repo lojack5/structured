@@ -25,6 +25,10 @@ from .array_headers import *
 
 
 T = TypeVar('T', bound=Header)
+
+# Unsure if this works as indended:  The passed type should be one of the
+# basic types, or derived from format_type (like pad, char, etc), or derived
+# from Structured.
 U = TypeVar('U',
     # Any of the Annotated types
     bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
@@ -108,7 +112,7 @@ class array(list[U], requires_indexing, Generic[T, U]):
     def _create(
             cls,
             header: type[Header],
-            array_type: type[U],
+            array_type,     # TODO: proper annotation?
         ) -> type[list[U]]:
         """Actual creation of the header."""
         if issubclass(array_type, format_type):

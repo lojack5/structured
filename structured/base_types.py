@@ -84,6 +84,9 @@ class ByteOrderMode(str, Enum):
 
 
 def noop_action(x: _T) -> _T:
+    """A noop for StructActionSerializers where no additional wrapping is
+    needed.
+    """
     return x
 
 
