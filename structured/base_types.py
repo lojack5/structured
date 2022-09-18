@@ -56,8 +56,8 @@ from io import BytesIO
 from itertools import chain
 
 from .type_checking import (
-    _T, Annotated, Any, Callable, ClassVar, ReadableBuffer, SupportsRead,
-    SupportsWrite, WritableBuffer,
+    _T, Annotated, Any, Callable, ClassVar, ReadableBuffer, BinaryIO,
+    WritableBuffer,
 )
 from .utils import specialized
 
@@ -148,13 +148,13 @@ class Serializer(structured_type):
             *values: Any,
         ) -> None:
         raise NotImplementedError
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         raise NotImplementedError
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         raise NotImplementedError
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         raise NotImplementedError
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         raise NotImplementedError
 
 
@@ -162,11 +162,11 @@ class Serializer(structured_type):
 class StructSerializer(struct.Struct, Serializer):
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         return super().unpack(buffer[:self.size])
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         # NOTE: use super-class's unpack to not interfere with custom
         # logic in subclasses
         return super().unpack(readable.read(self.size))
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         # NOTE: Call the super-class's pack, so we don't interfere with
         # any custom logic in pack_write for subclasses
         writable.write(super().pack(*values))
@@ -226,7 +226,7 @@ class CompoundSerializer(Serializer):
             size += serializer.size
         self.size = size
 
-    def pack_write(self, writable: SupportsWrite, *values: Any) -> None:
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         self.size = 0
         for serializer, attr_slice in self.serializers.items():
             serializer.pack_write(writable, *(values[attr_slice]))
@@ -250,7 +250,7 @@ class CompoundSerializer(Serializer):
         self.size = size
         return tuple(chain(*values))
 
-    def unpack_read(self, readable: SupportsRead) -> tuple:
+    def unpack_read(self, readable: BinaryIO) -> tuple:
         values = []
         size = 0
         for serializer in self.serializers:
