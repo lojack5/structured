@@ -1,8 +1,9 @@
 import sys
 import typing
 from typing import (
-    Any, Callable, ClassVar, Optional, Protocol, TypeVar, Union, Generic,
-    get_origin, get_type_hints, runtime_checkable, NoReturn, cast,
+    Annotated, Any, Callable, ClassVar, Generic, NoReturn, Optional, Protocol,
+    TypeVar, Union, cast, get_args, get_origin, get_type_hints,
+    runtime_checkable, Container,
 )
 
 if sys.version_info < (3, 10):
@@ -85,10 +86,10 @@ SupportsWrite: TypeAlias = Union[_SupportsWrite1, _SupportsWrite2]
 if typing.TYPE_CHECKING:
     import array
     import ctypes
+    import io
     import mmap
     import pickle
     import sys
-    import io
     from typing import Any
 
     ReadOnlyBuffer: TypeAlias = bytes

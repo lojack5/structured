@@ -41,7 +41,7 @@ class TestFormatted:
                 else:
                     return self._value == other
 
-        assert MutableType[int16].format == int16.format
+        assert MutableType[int16].format == 'h'
         assert MutableType[int16].unpack_action is MutableType[int16]
 
         class Base(Structured):
@@ -103,7 +103,7 @@ class TestFormatted:
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):
             _types = frozenset({int8, int16})
-        assert MutableType[int8].format == int8.format
+        assert MutableType[int8].format == 'b'
         assert MutableType[int8].unpack_action is MutableType[int8]
 
     def test_errors(self) -> None:

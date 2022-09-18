@@ -17,6 +17,7 @@ from ..base_types import (
     Serializer, StructSerializer, format_type, requires_indexing, struct_cache,
     ByteOrder,
 )
+from ..basic_types import *
 from ..utils import specialized
 from ..type_checking import (
     Union, ReadableBuffer, WritableBuffer, SupportsRead, SupportsWrite, Any,
@@ -25,7 +26,15 @@ from ..type_checking import (
 
 
 T = TypeVar('T', bound=Header)
-U = TypeVar('U', bound=Union[format_type, Structured])
+U = TypeVar('U',
+    # Any of the Annotated types
+    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
+    float32, float64,
+    # Or any format_type or a Structured type
+    format_type, Structured,
+    covariant=True,
+    #bound=Union[format_type, Structured],
+)
 
 
 class array(list[U], requires_indexing, Generic[T, U]):
@@ -69,6 +78,7 @@ class array(list[U], requires_indexing, Generic[T, U]):
         """Perform error checks and dispatch to the applicable class factory."""
         if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
+        args = tuple(map(unwrap_annotated, args))
         if len(args) == 2:
             header, array_type = args
         else:

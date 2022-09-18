@@ -16,7 +16,7 @@ from functools import reduce
 import re
 
 from .base_types import *
-from .basic_types import pad
+from .basic_types import pad, unwrap_annotated
 from .type_checking import (
     Any, ClassVar, Optional, ReadableBuffer, SupportsRead, SupportsWrite,
     WritableBuffer, get_type_hints, isclassvar, cast, TypeGuard, Union, TypeVar,
@@ -57,13 +57,13 @@ def filter_typehints(
         classdict: dict[str, Any],
     ) -> dict[str, type[_Annotation]]:
     filtered = {
-        attr: attr_type
+        attr: unwrapped
         for attr, attr_type in typehints.items()
-        if validate_typehint(attr_type)
+        if validate_typehint((unwrapped := unwrap_annotated(attr_type)))
     }
     for attr, attr_type in tuple(classdict.items()):
-        if validate_typehint(attr_type):
-            filtered[attr] = attr_type
+        if validate_typehint((unwrapped := unwrap_annotated(attr_type))):
+            filtered[attr] = unwrapped
             #del classdict[attr]
     return filtered
 
@@ -350,7 +350,7 @@ class Structured:
         # this method is cached too, so just go as is?
         hints = {
             attr: attr_type
-            for attr, attr_type in get_type_hints(cls).items()
+            for attr, attr_type in get_type_hints(cls, include_extras=True).items()
             if attr in attrs
         }
         return create_serializer(hints, cls.byte_order)
@@ -417,7 +417,7 @@ class Structured:
                 # NOTE: cls.__dict__ is a mappingproxy
                 classdict = dict(classdict) | clsdict
         # Analyze the class
-        typehints = get_type_hints(cls)
+        typehints = get_type_hints(cls, include_extras=True)
         serializer, attrs = create_serializer(typehints, byte_order, classdict)
         # And set the updated class attributes
         cls.serializer = serializer
@@ -448,8 +448,7 @@ class Structured:
         annotations = {}
         classdict = {}
         cls_annotations = get_annotations(cls)
-        cls_annotations = cls.__dict__.get('__annotations__', {})
-        for attr, attr_type in get_type_hints(cls).items():
+        for attr, attr_type in get_type_hints(cls, include_extras=True).items():
             if attr in cls_annotations:
                 # Attribute's final type hint comes from this class
                 if remapped_type := tvar_map.get(attr_type, None):

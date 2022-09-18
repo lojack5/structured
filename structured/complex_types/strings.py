@@ -17,15 +17,15 @@ from ..base_types import (
     Serializer, StructSerializer, requires_indexing, ByteOrder, struct_cache,
     structured_type, counted,
 )
-from ..basic_types import uint8, uint16, uint32, uint64
+from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..type_checking import (
     ClassVar, ReadableBuffer, SupportsRead, Any, SupportsWrite, WritableBuffer,
     Union, Callable, cast
 )
 
 
-_SizeTypes = (uint8, uint16, uint32, uint64)    # py 3.9 isinstance/subclass
-SizeTypes = Union[uint8, uint16, uint32, uint64]
+_SizeTypes = (_uint8, _uint16, _uint32, _uint64)    # py 3.9 isinstance/subclass
+SizeTypes = Union[_uint8, _uint16, _uint32, _uint64]
 Encoder = Callable[[str], bytes]
 Decoder = Callable[[bytes], str]
 
@@ -57,7 +57,7 @@ class char(_char):
         """Create a char specialization."""
         if not isinstance(args, tuple):
             args = (args,)
-        return cls._create(*args)
+        return cls._create(*map(unwrap_annotated, args))
 
     @classmethod
     @cache
@@ -130,7 +130,7 @@ class unicode(str, requires_indexing):
         # _create(uint8, 'utf8')
         # technically are different call types, so the cache isn't hit.
         # Pass through an intermediary to take care of this.
-        return cls.create(*args)
+        return cls.create(*map(unwrap_annotated, args))
 
     @classmethod
     def create(
