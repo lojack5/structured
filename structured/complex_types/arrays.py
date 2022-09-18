@@ -2,30 +2,42 @@
 Array types
 """
 from __future__ import annotations
-from typing import get_type_hints
 
 __all__ = [
     'array', 'Header',
 ]
 
 import io
-from itertools import repeat
 from functools import cache
+from itertools import repeat
 
-from .array_headers import *
 from ..base_types import (
-    Serializer, StructSerializer, format_type, requires_indexing, struct_cache,
-    ByteOrder,
+    ByteOrder, Serializer, StructSerializer, format_type, requires_indexing,
+    struct_cache,
+)
+from ..basic_types import *
+from ..type_checking import (
+    Annotated, Any, ClassVar, Generic, NoReturn, ReadableBuffer, SupportsRead,
+    SupportsWrite, TypeVar, WritableBuffer, get_type_hints,
 )
 from ..utils import specialized
-from ..type_checking import (
-    Union, ReadableBuffer, WritableBuffer, SupportsRead, SupportsWrite, Any,
-    NoReturn, ClassVar, Generic, TypeVar,
-)
+from .array_headers import *
 
 
 T = TypeVar('T', bound=Header)
-U = TypeVar('U', bound=Union[format_type, Structured])
+
+# Unsure if this works as indended:  The passed type should be one of the
+# basic types, or derived from format_type (like pad, char, etc), or derived
+# from Structured.
+U = TypeVar('U',
+    # Any of the Annotated types
+    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
+    float32, float64,
+    # Or any format_type or a Structured type
+    format_type, Structured,
+    covariant=True,
+    #bound=Union[format_type, Structured],
+)
 
 
 class array(list[U], requires_indexing, Generic[T, U]):
@@ -65,10 +77,11 @@ class array(list[U], requires_indexing, Generic[T, U]):
     def __class_getitem__(
             cls,
             args: tuple[type[T], type[U]]
-        ) -> type[Serializer]:
+        ) -> type[list[U]]:
         """Perform error checks and dispatch to the applicable class factory."""
         if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
+        args = tuple(map(unwrap_annotated, args))
         if len(args) == 2:
             header, array_type = args
         else:
@@ -99,8 +112,8 @@ class array(list[U], requires_indexing, Generic[T, U]):
     def _create(
             cls,
             header: type[Header],
-            array_type: type[U]
-        ) -> type[Serializer]:
+            array_type,     # TODO: proper annotation?
+        ) -> type[list[U]]:
         """Actual creation of the header."""
         if issubclass(array_type, format_type):
             if issubclass(header, (StaticCheckedHeader, DynamicCheckedHeader)):
@@ -114,20 +127,20 @@ class array(list[U], requires_indexing, Generic[T, U]):
                 class _array1(_format_array):
                     count: ClassVar[int] = header._count
                     obj_type: ClassVar[type[format_type]] = array_type
-                return _array1
+                return Annotated[list[U], _array1]
             else:
                 count = get_type_hints(header)['count']
                 @specialized(cls, header, array_type)
                 class _array2(_dynamic_format_array):
                     count_type: ClassVar[type[SizeTypes]] = count
                     obj_type: ClassVar[type[format_type]] = array_type
-                return _array2
+                return Annotated[list[U], _array2]
         else:
             @specialized(cls, header, array_type)
             class _array3(_structured_array):
                 header_type: ClassVar[type[Header]] = header
                 obj_type: ClassVar[type[Structured]] = array_type
-            return _array3
+            return Annotated[list[U], _array3]
 
 
 class _structured_array(Serializer):

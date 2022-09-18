@@ -4,6 +4,7 @@ import struct
 import pytest
 
 from structured import *
+from structured.basic_types import unwrap_annotated, format_type
 
 
 def test_errors() -> None:
@@ -17,8 +18,10 @@ def test_errors() -> None:
 
 class TesteChar:
     def test_static(self) -> None:
-        assert issubclass(char[13], structured.format_type)
-        assert char[13].format == '13s'
+        wrapped = char[13]
+        unwrapped = unwrap_annotated(wrapped)
+        assert issubclass(unwrapped, format_type)
+        assert unwrapped.format == '13s'
 
     def test_dynamic(self) -> None:
         class Base(Structured):

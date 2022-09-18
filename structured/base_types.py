@@ -43,21 +43,23 @@ provide the following methods and attributes:
             - unpack_from
             - pack_into
           This is to support dynamically sized packing/unpacking.
+          NOTE: Serializer objects are shared between class objects, so this
+          is only up to date with the most recent call amongst all objects
+          sharing the serializer.
 """
 from __future__ import annotations
 
-
 import struct
-from functools import cache, wraps
-from itertools import chain
-from io import BytesIO
 from enum import Enum
+from functools import cache, wraps
+from io import BytesIO
+from itertools import chain
 
-from .utils import specialized
 from .type_checking import (
-    ClassVar, Callable, Any, _T, ReadableBuffer, WritableBuffer, SupportsRead,
-    SupportsWrite,
+    _T, Annotated, Any, Callable, ClassVar, ReadableBuffer, SupportsRead,
+    SupportsWrite, WritableBuffer,
 )
+from .utils import specialized
 
 
 class ByteOrder(str, Enum):
@@ -82,6 +84,9 @@ class ByteOrderMode(str, Enum):
 
 
 def noop_action(x: _T) -> _T:
+    """A noop for StructActionSerializers where no additional wrapping is
+    needed.
+    """
     return x
 
 
@@ -125,7 +130,7 @@ class counted(format_type):
         @specialized(cls, count)
         class _counted(cls):
             format: ClassVar[str] = f'{count}{cls.format}'
-        return _counted
+        return Annotated[cls, _counted]
 
 
 class Serializer(structured_type):

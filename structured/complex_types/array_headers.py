@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from functools import cache
 
-from ..utils import StructuredAlias, specialized
+from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..structured import Structured
-from ..basic_types import uint8, uint16, uint32, uint64
-from ..type_checking import ClassVar, Union, Generic, Optional, TypeVar
+from ..type_checking import ClassVar, Generic, Optional, TypeVar, Union
+from ..utils import StructuredAlias, specialized
 
 
-_SizeTypes = (uint8, uint16, uint32, uint64)
-SizeTypes = Union[uint8, uint16, uint32, uint64]
+_SizeTypes = (_uint8, _uint16, _uint32, _uint64)
+SizeTypes = Union[_uint8, _uint16, _uint32, _uint64]
 TSize = TypeVar('TSize', bound=SizeTypes)
 TCount = TypeVar('TCount', bound=SizeTypes)
 
@@ -183,7 +183,7 @@ class Header(Structured, HeaderBase):
         """
         if not isinstance(key, tuple):
             key = (key, )
-        return cls.create(*key)
+        return cls.create(*map(unwrap_annotated, key))
 
     @classmethod
     def create(cls, count, size_check=None):

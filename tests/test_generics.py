@@ -7,9 +7,9 @@ from structured import *
 from structured.utils import StructuredAlias
 
 
-_Byte = TypeVar('_Byte', bound=Union[uint8, int8])
+_Byte = TypeVar('_Byte', uint8, int8)
 _String = TypeVar('_String', bound=Union[char, pascal, unicode])
-_Size = TypeVar('_Size', bound=Union[uint8, uint16, uint32, uint64])
+_Size = TypeVar('_Size', uint8, uint16, uint32, uint64)
 T = TypeVar('T', bound=Structured)
 U = TypeVar('U')
 V = TypeVar('V')
@@ -100,7 +100,7 @@ def test_automatic_resolution():
     class FullySpecialized2(PartiallySpecialized[uint16, Item]): pass
 
     assert PartiallySpecialized.attrs == ('a', 'b')
-    hints = get_type_hints(PartiallySpecialized)
+    hints = get_type_hints(PartiallySpecialized, include_extras=True)
     assert hints['a'] is uint8
     assert hints['b'] is unicode[uint32]
     assert isinstance(hints['c'], StructuredAlias)

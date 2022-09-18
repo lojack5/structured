@@ -8,24 +8,23 @@ __all__ = [
     'NET',
 ]
 
-from functools import cache, partial
 import struct
-from typing import TypeVar
+from functools import cache, partial
 
-from ..utils import StructuredAlias, specialized
 from ..base_types import (
-    Serializer, StructSerializer, requires_indexing, ByteOrder, struct_cache,
-    structured_type, counted,
+    ByteOrder, Serializer, StructSerializer, counted, requires_indexing,
+    struct_cache,
 )
-from ..basic_types import uint8, uint16, uint32, uint64
+from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..type_checking import (
-    ClassVar, ReadableBuffer, SupportsRead, Any, SupportsWrite, WritableBuffer,
-    Union, Callable, cast
+    Annotated, Any, Callable, ClassVar, ReadableBuffer, SupportsRead,
+    SupportsWrite, TypeVar, Union, WritableBuffer, cast,
 )
+from ..utils import StructuredAlias
 
 
-_SizeTypes = (uint8, uint16, uint32, uint64)    # py 3.9 isinstance/subclass
-SizeTypes = Union[uint8, uint16, uint32, uint64]
+_SizeTypes = (_uint8, _uint16, _uint32, _uint64)    # py 3.9 isinstance/subclass
+SizeTypes = Union[_uint8, _uint16, _uint32, _uint64]
 Encoder = Callable[[str], bytes]
 Decoder = Callable[[bytes], str]
 
@@ -53,18 +52,18 @@ class char(_char):
                       type[Union[uint8, uint16, uint32, uint64]],
                       type[NET]]
     """
-    def __class_getitem__(cls, args) -> type[structured_type]:
+    def __class_getitem__(cls, args) -> type[bytes]:
         """Create a char specialization."""
         if not isinstance(args, tuple):
             args = (args,)
-        return cls._create(*args)
+        return cls._create(*map(unwrap_annotated, args))
 
     @classmethod
     @cache
     def _create(
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
-        ) -> type[structured_type]:
+        ) -> type[bytes]:
         if isinstance(count, int):
             new_cls = _char[count]
         elif isinstance(count, type) and issubclass(count, _SizeTypes):
@@ -78,7 +77,7 @@ class char(_char):
                 f'{cls.__qualname__}[] count must be an int, NET, or uint* '
                 'type.'
             )
-        return specialized(cls, count)(new_cls)
+        return Annotated[bytes, new_cls]
 
 
 class EncoderDecoder:
@@ -121,7 +120,7 @@ class unicode(str, requires_indexing):
     :type encoding: Union[str, type[EncoderDecoder]]
     """
     @classmethod
-    def __class_getitem__(cls, args) -> type[Serializer]:
+    def __class_getitem__(cls, args) -> type[str]:
         """Create the specialization."""
         if not isinstance(args, tuple):
             args = (args, )
@@ -130,14 +129,14 @@ class unicode(str, requires_indexing):
         # _create(uint8, 'utf8')
         # technically are different call types, so the cache isn't hit.
         # Pass through an intermediary to take care of this.
-        return cls.create(*args)
+        return cls.create(*map(unwrap_annotated, args))
 
     @classmethod
     def create(
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
             encoding: Union[str, type[EncoderDecoder]] = 'utf8',
-        ) -> type[Serializer]:
+        ) -> type[str]:
         return cls._create(count, encoding)
 
     @classmethod
@@ -146,7 +145,7 @@ class unicode(str, requires_indexing):
             cls,
             count: Union[int, type[SizeTypes], type[NET]],
             encoding: Union[str, type[EncoderDecoder]],
-        ) -> type[Serializer]:
+        ) -> type[str]:
         """Create the specialization.
 
         :param count: Size of the *encoded* string.
@@ -175,8 +174,7 @@ class unicode(str, requires_indexing):
             raise TypeError()
 
         new_cls = unicode_wrap(base, encoder, decoder)
-        return specialized(cls, count, encoding)(new_cls)
-
+        return Annotated[str, new_cls]
 
 
 class _static_char(StructSerializer):

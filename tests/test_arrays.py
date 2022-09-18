@@ -220,7 +220,7 @@ def test_static_checked_structured(items: list[Item]):
         target_obj.pack()
 
     # Test malformed data_size
-    st = struct.Struct(uint32.format)
+    st = struct.Struct('I')
     st.pack_into(buffer, 0, 0)
     with pytest.raises(ValueError):
         Compound.create_unpack_from(buffer)
