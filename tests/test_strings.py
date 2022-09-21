@@ -14,9 +14,12 @@ def test_errors() -> None:
         unicode[5, uint32]
     with pytest.raises(TypeError):
         char[1.0]
+    with pytest.raises(ValueError):
+        char[b'aa']
 
 
-class TesteChar:
+
+class TestChar:
     def test_static(self) -> None:
         wrapped = char[13]
         unwrapped = unwrap_annotated(wrapped)
@@ -60,6 +63,70 @@ class TesteChar:
             assert stream.getvalue() == target_data
             stream.seek(0)
             assert Base.create_unpack_read(stream) == target_obj
+
+    def test_null(self) -> None:
+        class Base(Structured):
+            name: null_char
+
+        source_data = b'Hello\0Extra'
+        target_data = b'Hello\0'
+        target_obj = Base(b'Hello')
+        target_size = 6
+
+        # pack/unpack
+        assert target_obj.pack() == target_data
+        assert Base.create_unpack(source_data) == target_obj
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack(target_data) == target_obj
+        assert Base.serializer.size == target_size
+
+        # into/from
+        source_buffer = bytearray(source_data)
+        buffer = bytearray(6)
+        target_obj.pack_into(buffer)
+        assert bytes(buffer) == target_data
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack_from(buffer) == target_obj
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack_from(source_buffer) == target_obj
+        assert Base.serializer.size == target_size
+
+        # read/write
+        with io.BytesIO() as stream:
+            target_obj.pack_write(stream)
+            assert Base.serializer.size == target_size
+            assert stream.getvalue() == target_data
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == target_obj
+        with io.BytesIO(source_data) as stream:
+            assert Base.create_unpack_read(stream) == target_obj
+            assert Base.serializer.size == target_size
+
+        # Non-terminated
+        error_data = b'Hello'
+        with pytest.raises(ValueError):
+            Base.create_unpack(error_data)
+        with pytest.raises(ValueError):
+            with io.BytesIO(error_data) as ins:
+                Base.create_unpack_read(ins)
+        with pytest.raises(ValueError):
+            Base.create_unpack_from(bytearray(error_data))
+
+        # empty string
+        target_obj.name = b''
+        assert target_obj.pack() == b'\0'
+        # no delim
+        target_obj.name = b'Hi'
+        assert target_obj.pack() == b'Hi\0'
+
+    def test_custom_delim(self) -> None:
+        class Base(Structured):
+            name: char[b'H']
+
+        target_obj = Base(b'Foo')
+        assert target_obj.pack() == b'FooH'
+        assert Base.create_unpack(b'FooHBar') == target_obj
+
 
 
     def test_net_errors(self) -> None:
@@ -226,3 +293,48 @@ class TestUnicode:
             assert target_obj.serializer.size == st.size
             stream.seek(0)
             assert Base.create_unpack_read(stream) == target_obj
+
+    def test_null(self) -> None:
+        class Base(Structured):
+            name: null_unicode
+
+        source_data = b'Hello\0Extra'
+        target_data = b'Hello\0'
+        target_obj = Base('Hello')
+        target_size = 6
+
+        # pack/unpack
+        assert target_obj.pack() == target_data
+        assert Base.create_unpack(source_data) == target_obj
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack(target_data) == target_obj
+        assert Base.serializer.size == target_size
+
+        # into/from
+        source_buffer = bytearray(source_data)
+        buffer = bytearray(6)
+        target_obj.pack_into(buffer)
+        assert bytes(buffer) == target_data
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack_from(buffer) == target_obj
+        assert Base.serializer.size == target_size
+        assert Base.create_unpack_from(source_buffer) == target_obj
+        assert Base.serializer.size == target_size
+
+        # read/write
+        with io.BytesIO() as stream:
+            target_obj.pack_write(stream)
+            assert Base.serializer.size == target_size
+            assert stream.getvalue() == target_data
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == target_obj
+        with io.BytesIO(source_data) as stream:
+            assert Base.create_unpack_read(stream) == target_obj
+            assert Base.serializer.size == target_size
+
+        error_data = b'Hello'
+        with pytest.raises(ValueError):
+            Base.create_unpack(error_data)
+        with pytest.raises(ValueError):
+            with io.BytesIO(error_data) as ins:
+                Base.create_unpack_read(ins)

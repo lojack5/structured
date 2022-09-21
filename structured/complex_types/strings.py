@@ -5,9 +5,11 @@ to its potentially Serailizer nature when used with a dynamic size.
 __all__ = [
     'EncoderDecoder',
     'unicode', 'char',
+    'null_unicode', 'null_char',
     'NET',
 ]
 
+import io
 import struct
 from functools import cache, partial
 
@@ -20,7 +22,7 @@ from ..type_checking import (
     Annotated, Any, Callable, ClassVar, ReadableBuffer, BinaryIO, TypeVar,
     Union, WritableBuffer, cast,
 )
-from ..utils import StructuredAlias
+from ..utils import StructuredAlias, specialized
 
 
 _SizeTypes = (_uint8, _uint16, _uint32, _uint64)    # py 3.9 isinstance/subclass
@@ -66,16 +68,18 @@ class char(_char):
         ) -> type[bytes]:
         if isinstance(count, int):
             new_cls = _char[count]
-        elif isinstance(count, type) and issubclass(count, _SizeTypes):
+        elif count in _SizeTypes:
             new_cls = _dynamic_char[count]
         elif count is NET:
             new_cls = _net_char
         elif isinstance(count, TypeVar):
             return StructuredAlias(cls, (count,))   # type: ignore
+        elif isinstance(count, bytes):
+            new_cls = _terminated_char[count]
         else:
             raise TypeError(
-                f'{cls.__qualname__}[] count must be an int, NET, or uint* '
-                'type.'
+                f'{cls.__qualname__}[] count must be an int, NET, terminator '
+                'byte, or uint* type.'
             )
         return Annotated[bytes, new_cls]
 
@@ -166,10 +170,12 @@ class unicode(str, requires_indexing):
 
         if isinstance(count, int):
             base = _static_char[count]
-        elif isinstance(count, type) and issubclass(count, _SizeTypes):
+        elif count in _SizeTypes:
             base = _dynamic_char[count]
         elif count is NET:
             base = _net_char
+        elif isinstance(count, bytes):
+            base = _terminated_char[count]
         else:
             raise TypeError()
 
@@ -305,6 +311,85 @@ class _dynamic_char(Serializer):
         class _dynamic(cls):
             count_type: ClassVar[type[SizeTypes]] = count
         return _dynamic
+
+
+class _terminated_char(Serializer):
+    """A string whose length is determined by a delimiter."""
+    terminator: ClassVar[bytes]
+    size: int
+
+    def __init__(self, byte_order: ByteOrder) -> None:
+        self.size = 0
+
+    def _st_data(self, values: tuple[bytes]) -> tuple[StructSerializer, bytes]:
+        raw = values[0]
+        if not raw or raw[-1] != self.terminator:
+            raw += self.terminator
+        count = len(raw)
+        self.size = count
+        return struct_cache(f'{count}s'), raw
+
+    def pack(self, *values: bytes) -> bytes:
+        st, data = self._st_data(values)
+        return st.pack(data)
+
+    def pack_into(self, buffer: WritableBuffer, offset: int, *values: bytes) -> None:
+        st, data = self._st_data(values)
+        st.pack_into(buffer, offset, data)
+
+    def pack_write(self, writable: BinaryIO, *values: bytes) -> None:
+        st, data = self._st_data(values)
+        st.pack_write(writable, data)
+
+    def unpack(self, buffer: ReadableBuffer) -> tuple[bytes]:
+        end = buffer.find(self.terminator)
+        if end == -1:
+            raise ValueError('Unterminated string.')
+        else:
+            self.size = end + 1
+            return bytes(buffer[:end]),
+
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
+        size = 0
+        term = ord(self.terminator)
+        try:
+            while buffer[offset + size] != term:
+                size += 1
+            self.size = size + 1
+            return bytes(buffer[offset: offset + size]),
+        except IndexError:
+            raise ValueError(f'Unterminated string.') from None
+
+    def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
+        size = 0
+        READ_SIZE = 256
+        start_pos = readable.tell()
+        with io.BytesIO() as out:
+            while chunk := readable.read(READ_SIZE):
+                offset = chunk.find(self.terminator)
+                if offset == -1:
+                    out.write(chunk)
+                    size += READ_SIZE
+                else:
+                    out.write(chunk[:offset])
+                    size += offset + 1
+                    readable.seek(start_pos + size)
+                    break
+            else:
+                raise ValueError('unterminated string.')
+            self.size = size
+            return out.getvalue(),
+
+
+    def __class_getitem__(cls, term: bytes) -> type[Serializer]:
+        if len(term) != 1:
+            raise ValueError('char terminator must be a single byte.')
+        class new_cls(_terminated_char):
+            terminator: ClassVar[bytes] = term
+        return specialized(cls, term)(new_cls)
+
+
+null_char = Annotated[bytes, char[b'\0']]
 
 
 class _net_char(Serializer):
@@ -445,3 +530,6 @@ def unicode_wrap(
         def unpack_read(self, readable: BinaryIO) -> tuple[str]:
             return self.decoder(super().unpack_read(readable)[0]).rstrip('\0'),
     return _unicode
+
+
+null_unicode = Annotated[str, unicode[b'\0']]
