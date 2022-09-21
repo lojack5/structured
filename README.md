@@ -196,23 +196,15 @@ Structured also supports a few more complex types that require extra logic to pa
 - `array`: For unpacking multiple instances of a single type.  The number to unpack may be static or, like `blob`, determined by data just prior to the array.
 
 
-### `char`
-When `char` is used with one of `uint8`, `uint16`, `uint32` or `uint16` it becomes and advanced type.  The length of bytes to unpack is determined by the type specified.  This can be used to represent raw binary blobs of data that you do not with to decode further.  This is very similar to `pascal`, but allows for larger size indicators before the bytes.:
+### String types
+There are two string types, `char` and `unicode`, with four ways to specify their length (in bytes):
+- `char`: A bar `char` or `unicode` specifies unpacking a single byte.
+- `char[5]`: Specifying an integer unpacks a fixed sized `bytes` (for `char`) or `str` (for `unicode`).
+- `char[uint8]`: Specifying one of `uint8`, `uint16`, `uint32`, or `uint64` causes unpacking fist the specified integers, which denotes the length in bytes of the `char` or `unicode` string to unpack.
+- `char[b'\0']`: Specifying a single byte indicates a terminated string.  Data will be unpacked until the delimiter is encountered.  As a quick alias, you can use `null_char` and `null_unicode` for a null-terminated `bytes` or `str`, respectively.  Packing terminated strings will automatically add the terminator if missing, and unpacking will fail if the terminator is not encountered.
 
-```python
-class MyStruct(Structured):
-  data: char[uint32]
-```
+The difference between `char` and `unicode` is that `unicode` objects will automatically encode/decode the string for you.  You can specify one of the built-in encodings as a second argument to `unicode`: `unicode[10, 'ascii']`, or if needed code your own `EncoderDecoder` class to provide the encoding and decoding methods.  The default encoding if not specified is `'utf8'`.
 
-### `unicode`
-`unicode` is identical to `char` with the exception of an optional `encoding` argument, which defaults to `'utf8'`.  The size for `unicode` represents the size as bytes, not the length of the decoded string.  If you need custom encoding/decoding not provided with the built int python encodings, you can create a custom `EncoderDecoder` subclass, implementing its class methods `encode` and `decode`.
-
-```python
-class MyStruct(Structured):
-  name: unicode[5]
-  description: unicode[uint16]
-  other: unicode[uint16, 'utf16']
-```
 
 ### `array`
 Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of five ways:
