@@ -15,14 +15,14 @@ with open('some_file.dat', 'rb') as ins:
   a.unpack_read(ins)
 ```
 
-### Format specifiers
+### Format specifiers (basic types)
 
 Almost every format specifier in `struct` is supported as a type:
 
 | `struct` format | structured type | Python type | Notes |
-|:---------------:|:---------------:|-------------|------:|
+|:---------------:|:---------------:|-------------|:-----:|
 | `x`             | `pad`           |             |(1)(4) |
-| `c`             | not supported   | `bytes` with length 1 | |
+| `c`             | `char`          | `bytes` with length 1 | |
 | `?`             | `bool8`         | `int`       |  (3)  |
 | `b`             | `int8`          | `int`       |       |
 | `B`             | `uint8`         | `int`       |       |
@@ -42,9 +42,9 @@ Almost every format specifier in `struct` is supported as a type:
 | `P`             | not supported   |             |       |
 
 Notes:
- 1. The default for this type is to unpack one of this type.  For specifying longer sequences, use indexing to specify the length.
+ 1. The default for this a single instance of this type.  For specifying longer sequences, use indexing to specify the length.
  2. The 16-bit float type is not supported on all platforms.
- 3. The `bool` type cannot be subclasses, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
+ 3. `struct` treats `bool` as an `int`, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
  4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.
 
 You can also specify byte order packing/unpacking rules, by passing a `ByteOrder` to the `Structured` class on class creation.  For example:
@@ -128,7 +128,7 @@ class MyWeirdInt(Formatted):
     unpack_action = from_unpack
 ```
 
-As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.
+As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.  For `bytes` wrappers, unfortunately `struct` does not call `__bytes__` on the unerlying object.  Your options in that case are to base your class on `bytes` (forcing it to be immutable), or to write a `Serializer` for it.  You can take a look at `complex_types/strings.py` for some ideas on how to do that.
 
 ### Extending
 `Structured` classes can be extended to create a new class with additional, modified, or removed attributes.  If you annotate an attribute already in the base class, it will change its format specifier to the new type.  This can be used for example, to remove an attribute from the struct packing/unpacking by annotating it with a python type rather than one of the provided types.
@@ -144,7 +144,7 @@ class Derived(Base):
   b: None
   d: float32
 ```
-In this example, `Derived` now treats `a` as an `int16`, and ignores `b` completely when it comes to packing/unpacking.  The format string for `Derived` is now `'hif'`.
+In this example, `Derived` now treats `a` as an `int16`, and ignores `b` completely when it comes to packing/unpacking.  The format string for `Derived` is now `'hif'` (`a: int8`, `c: int32`, `d: float32`).
 
 #### Extending - Byte Order
 When extending a `Structured` class, the default behavior is to only allow extending if the derived class has the same byte order specifier as the base class.  If you are purposfully wanting to change the byte order, pass `byte_order_mode=ByteOrderMode.OVERRIDE` in the class derivation:
@@ -169,12 +169,14 @@ format_string = MyStruct.serializer.format
 format_size = MyStruct.serializer.size
 ```
 
-You can also access the `attrs` class attribute, which is the attribute names handled by the class's serializer.
+You can also access the `attrs` class attribute, which is the attribute names handled by the class's serializer, in the order they are packed/unpacked.
 
 For more advanced work, it is recommended to rework your class layout, or write your own custom `Serializer` class and annotate your types with it (See: structured/base_types.py for more information on the Serializer API).  In the case this is still not enough, you have access to two builder methods:
 
 - `structured.create_serializer`: This is used internally to create the serializers on the classes themselves.  You can call it with a typehints dictionary, and a byte order to use.  You can optionally pass in a second typhints-like dictionary to override anything in the typehints dictionary (this is only used in class creation, it should not be necessary in most cases).  The method returns back a `Serializer` instance, along with a tuple of attribute names the serializer packs and unpacks.
 - `Structured.create_attribute_serializer`: You can call this with attribute names on a `Structured` class to get a serializer which can pack and unpack the given attributes on the class.  Note that at the moment there is little sanity checking.  The resulting serializer will be set up to pack/unpack the given attributes *in the order they are defined on the class*.  Any gaps in the attribute layout are up to you to handle.
+
+In the instance you find yourself working with a common pattern that is not handled easily by the built in features of `structured`, feel free to open a feature request!
 
 
 ### Packing / Unpacking methods
@@ -198,7 +200,7 @@ Structured also supports a few more complex types that require extra logic to pa
 
 ### String types
 There are two string types, `char` and `unicode`, with four ways to specify their length (in bytes):
-- `char`: A bar `char` or `unicode` specifies unpacking a single byte.
+- `char`: A bare `char` or `unicode` specifies unpacking a single byte.
 - `char[5]`: Specifying an integer unpacks a fixed sized `bytes` (for `char`) or `str` (for `unicode`).
 - `char[uint8]`: Specifying one of `uint8`, `uint16`, `uint32`, or `uint64` causes unpacking fist the specified integers, which denotes the length in bytes of the `char` or `unicode` string to unpack.
 - `char[b'\0']`: Specifying a single byte indicates a terminated string.  Data will be unpacked until the delimiter is encountered.  As a quick alias, you can use `null_char` and `null_unicode` for a null-terminated `bytes` or `str`, respectively.  Packing terminated strings will automatically add the terminator if missing, and unpacking will fail if the terminator is not encountered.
@@ -207,13 +209,13 @@ The difference between `char` and `unicode` is that `unicode` objects will autom
 
 
 ### `array`
-Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of five ways:
-- A static number of basic items packed continuously.
-- A dynamic number of basic items packed continuously, preceeded by the number of items packed.
-- A static number of Structured items packed continuously, preceeded by the total size of the items.
-- A dynamic number of Structured items packed continuously, preceeded by the number of items packed.
-- A dynamic number of Structured items packed continuously, preceeded by the number of items as well as the total size of the packed items.
-To declare which type, use a specialization of the `Header` class as the first argument to your `array` specialization.  The first argument to `Header` is the array length: either an integer, or one of the `uint*` types used to unpack the length.  The second (optional) argument specifies a `uint*` type used to hold the size of the packed array items in bytes.
+Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of five ways.  First specify a `Header` which determines how the length is determined, and optionally any size check bytes, then specify a data type held by the `array`:
+- `array[Header[10], int8]`: A static number (`10`) of basic items (`int8`).  Array length will be checked on writing.
+- `array[Header[uint32], int8]`: A dynamic number of basic items (`int8`).  Array length is determined by unpacking a `uint32` first.
+- `array[Header[3], MyStruct]`: A static number (`3`) of `Structured` derived items (`MyStruct` instances).  Array length will be checked on writing.
+- `array[Header[uint8], MyStruct]`: A dynamic number of `Structured` derived items (`MyStruct` instances).  Array length is determined by unpacking a `uint8` first.
+- `array[Header[uint8, uint32], MyStruct]`: A dynamic number of `Structured` derived items (`MyStruct` instances).  Array length is determined by unpacking a `uint8` first, and directly after a `uint32` is unpacked which holds the number of bytes which hold the actual `Structured` items (not including the header size).  This size is checked on unpacking.
+NOTE: Only arrays holding `Structured` items currently support the optional data size unpacking in the `Header`.
 
 For example, suppose you know there will always be 10 `uint8`s in your object and you want them in an array:
 ```python
@@ -221,13 +223,7 @@ class MyStruct(Structured):
   items: array[Header[10], uint8]
 ```
 
-Or if you need to unpack a `uint32` to determine the number of `uint8`s, then immediately unpack those items:
-```python
-class MyStruct(Structured):
-  items: array[Header[uint32], uint8]
-```
-
-For arrays of `Structured` objects, you can optionally also provide a type to unpack, directly after the array length, which represents the packed array size in bytes.
+Or if you need to unpack a `uint32` to determine the number of items, then a `uint32` to detemine the data size of the array, each item holding a `uint8` and a `uint16`:
 ```python
 class MyItem(Structured):
   first: int8
@@ -235,7 +231,6 @@ class MyItem(Structured):
 
 class MyStruct(Structured):
   ten_items: array[Header[10, uint32], MyItem]
-  many_items: array[Header[uint32, uint32], MyItem]
 ```
 
 
@@ -245,10 +240,10 @@ For the most part, `structured` should work with type checkers set to basic leve
 - `float*` present as `float`.
 - `bool8` presents as `int`.  This may change to `bool` in the future, but it's this way currently because the `?` format specifier packs/unpacks as an `int`.
 - `char` and `pascal` are subclasses of `bytes`, so they have the typechecker limitations below.
-- `array[<Header>, T]` is a subclass of `list[T]`, so it has the typechecker limitations below.
+- `array[Header[...], T]` is a subclass of `list[T]`, so it has the typechecker limitations below.
 - `unicode` is a subclass of `str`, so it has the typechecker limitations below.
 
-The limitations for types that are subclasses of their intended type, rather than `Annotated` as such, is most typecheckers will warn you about assignment.  For example:
+The limitations for types that are subclasses of their intended type, rather than `typing.Annotated` as such, is most typecheckers will warn you about assignment.  For example:
 ```python
 class MyStruct(Structured):
   items: array[Header[3], int8]
@@ -257,7 +252,7 @@ a = MyStruct([1, 2, 3])
 a.items = [4, 5, 6]   # Warning about incompatibility between list and array
 ```
 
-To resolve this, you will have to use an alternative syntax: `Annotated`:
+To resolve this, you will have to use an alternative syntax: `typing.Annotated`:
 ```python
 class MyStruct(Structured):
   items: Annotated[list[int8], array[Header[3], int8]]
@@ -270,18 +265,18 @@ NOTE: In older versions, it was recommened to use `serialized`.  This method has
 
 
 ## Generic `Structured` classes
-You can also create your `Structured` class as a `Generic`.  Due to details of how `typing.Generic` works, to get a working specialized version, you must subclass the specialization:
+You can also create your `Structured` class as a `typing.Generic`.  Due to details of how `Generic` works, to get a working specialized version, you must subclass the specialization:
 
 ```python
 class MyGeneric(Generic[T, U], Structured):
   a: T
-  b: list[U] = serializerd(array[Header[10], U])
+  b: list[U] = Annotated[list[U], array[Header[10], U]]
 
 
 class ConcreteClass(MyGeneric[uint8, uint32]): pass
 ```
 
-One **limitation** here however, you cannot use a generic Structured class as an array object type.  It will act as the base class without specialization (See #8).  So for example, the following code will not work as you expect:
+One **limitation** here however, you cannot use a generic Structured class as an array object type (as expected at least).  It will act as the base class without specialization (See #8).  So for example, the following code will not work as you expect:
 ```python
 class Item(Generic[T], Structured):
   a: T
@@ -291,6 +286,8 @@ class MyStruct(Generic[T], Structured):
 
 class Concrete(MyStruct[uint32]): pass
 
-assert Concrete.args == ('items', )
+obj = Concrete.unpack(data)
+assert hasattr(obj.items[0], 'a')
+
 > AssertionError
 ```
