@@ -111,3 +111,14 @@ logic for a data type, and function almost like a ``struct.Struct`` instance.
 .. note::
     If you think your use case for a ``Serializer`` is common, feel free to open
     a feature request (LINK)!
+
+.. currentmodule:: structured
+.. autoclass:: Serializer
+   :members:
+   :undoc-members:
+   :special-members: __init__
+
+For some examples on how to actually implement this, take a look at the source
+files in :mod:`structured.complex_types`.  Note if you are creating a
+Serializer for a container type and wish to support generics, check out the
+section on coding for that as well (TODO: LINK).
