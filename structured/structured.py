@@ -2,7 +2,8 @@ from __future__ import annotations
 
 __all__ = [
     'Structured',
-    'ByteOrder', 'ByteOrderMode',
+    'ByteOrder',
+    'ByteOrderMode',
     'serialized',
     'create_serializer',
 ]
@@ -16,9 +17,23 @@ from structured.utils import StructuredAlias
 from .base_types import *
 from .basic_types import pad, unwrap_annotated
 from .type_checking import (
-    Any, ClassVar, Generic, Optional, ReadableBuffer, BinaryIO, TypeGuard,
-    TypeVar, Union, WritableBuffer, cast, get_annotations, get_args, get_origin,
-    get_type_hints, isclassvar, update_annotations,
+    Any,
+    ClassVar,
+    Generic,
+    Optional,
+    ReadableBuffer,
+    BinaryIO,
+    TypeGuard,
+    TypeVar,
+    Union,
+    WritableBuffer,
+    cast,
+    get_annotations,
+    get_args,
+    get_origin,
+    get_type_hints,
+    isclassvar,
+    update_annotations,
 )
 from .utils import deprecated
 
@@ -43,14 +58,11 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
             if issubclass(attr_type, (format_type, Serializer)):
                 return True
             else:
-                raise TypeError(
-                    f'Unknown structured type {attr_type.__qualname__}'
-                )
+                raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
     return False
 
 
-@deprecated('2.1.0', '3.0',
-            issue=5, use_instead='Annotated[unpacked_type, kind]')
+@deprecated('2.1.0', '3.0', issue=5, use_instead='Annotated[unpacked_type, kind]')
 def serialized(kind: Any) -> Any:
     """Type erasure for class definitions, allowing for linters to pick up the
     correct final type.  For example:
@@ -62,9 +74,9 @@ def serialized(kind: Any) -> Any:
 
 
 def filter_typehints(
-        typehints: dict[str, Any],
-        classdict: dict[str, Any],
-    ) -> dict[str, type[_Annotation]]:
+    typehints: dict[str, Any],
+    classdict: dict[str, Any],
+) -> dict[str, type[_Annotation]]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
@@ -84,13 +96,13 @@ def filter_typehints(
     for attr, attr_type in tuple(classdict.items()):
         if validate_typehint((unwrapped := unwrap_annotated(attr_type))):
             filtered[attr] = unwrapped
-            #del classdict[attr]
+            # del classdict[attr]
     return filtered
 
 
 def split_typehints(
-        typehints: dict[str, type[_Annotation]],
-    ) -> list[dict[str, type[_Annotation]]]:
+    typehints: dict[str, type[_Annotation]],
+) -> list[dict[str, type[_Annotation]]]:
     """Take a filtered typehints dictionary, and split it up into groups
     corresponding to final serializers.  Attributes unpacked with a simple
     struct format specifier are grouped together, and those that need a complex
@@ -103,6 +115,7 @@ def split_typehints(
     split: list[dict[str, type[_Annotation]]] = []
 
     current_group = {}
+
     def finalize_group():
         nonlocal current_group
         if current_group:
@@ -112,7 +125,7 @@ def split_typehints(
     for attr, attr_type in typehints.items():
         if issubclass(attr_type, format_type):
             current_group[attr] = attr_type
-        else:   # Serializer
+        else:  # Serializer
             finalize_group()
             split.append({attr: attr_type})
     finalize_group()
@@ -120,9 +133,9 @@ def split_typehints(
 
 
 def create_struct(
-        typehints: dict[str, type[format_type]],
-        byte_order: ByteOrder,
-    ) -> tuple[StructSerializer, tuple[str, ...]]:
+    typehints: dict[str, type[format_type]],
+    byte_order: ByteOrder,
+) -> tuple[StructSerializer, tuple[str, ...]]:
     """Create a StructSerializer for a group of attributes.  Such a group is
     obtained via `split_typhints`, and requires a group of attributes that uses
     only basic struct format specifiers.  This also returns the resulting
@@ -133,9 +146,7 @@ def create_struct(
     :param byte_order: Which ByteOrder to use for this StructSerializer.
     :return: The generated StructSerializer, and attribute names.
     """
-    fmt = reduce(fold_overlaps,
-                 (var_type.format for var_type in typehints.values())
-    )
+    fmt = reduce(fold_overlaps, (var_type.format for var_type in typehints.values()))
     attr_actions = {
         attr: attr_type.unpack_action
         for attr, attr_type in typehints.items()
@@ -148,10 +159,10 @@ def create_struct(
 
 
 def create_serializer(
-        typehints: dict[str, Any],
-        byte_order: ByteOrder = ByteOrder.DEFAULT,
-        classdict: Optional[dict[str, Any]] = None,
-    ) -> tuple[Serializer, tuple[str, ...]]:
+    typehints: dict[str, Any],
+    byte_order: ByteOrder = ByteOrder.DEFAULT,
+    classdict: Optional[dict[str, Any]] = None,
+) -> tuple[Serializer, tuple[str, ...]]:
     """Create a Serializer appropriate for packing/unpacking attributes.
     Attributes are matched first by searching through `typhints` for names with
     applicable Structured types.  Optionally (used internally for class
@@ -197,6 +208,8 @@ def create_serializer(
 
 
 _reOverlap: re.Pattern[str] = re.compile(r'(.*?)(\d+)\D$')
+
+
 def fold_overlaps(format1: str, format2: str) -> str:
     """Combines two format strings into one, combining common types into counted
     versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
@@ -210,8 +223,7 @@ def fold_overlaps(format1: str, format2: str) -> str:
         return format2
     elif not format2:
         return format1
-    if ((overlap := format1[-1]) == format2[0] and
-        overlap not in ('s', 'p')):
+    if (overlap := format1[-1]) == format2[0] and overlap not in ('s', 'p'):
         if match := _reOverlap.match(format1):
             prelude, count = match.groups()
             count = int(count)
@@ -233,10 +245,13 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
     :return: The direct base class which is Structured derived and not the
         Structured class itself, or None if no such base class exists.
     """
-    bases = tuple((
-        base for base in cls.__bases__
-        if issubclass(base, Structured) and base is not Structured
-    ))
+    bases = tuple(
+        (
+            base
+            for base in cls.__bases__
+            if issubclass(base, Structured) and base is not Structured
+        )
+    )
     if len(bases) > 1:
         raise TypeError(
             'Multiple inheritence from Structured base classes is not allowed.'
@@ -248,9 +263,12 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
 
 
 _C = TypeVar('_C', bound='Structured')
+
+
 class Structured:
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
+
     __slots__ = ()
     serializer: ClassVar[Serializer] = struct_cache('')
     attrs: ClassVar[tuple[str, ...]] = ()
@@ -274,9 +292,9 @@ class Structured:
             )
         attrs_values |= kwargs
         present = set(attrs_values.keys())
-        if (missing := (attr_set := set(self.attrs)) - present):
+        if missing := (attr_set := set(self.attrs)) - present:
             raise TypeError(f'missing arguments {missing}')
-        elif (extra := present - attr_set):
+        elif extra := present - attr_set:
             raise TypeError(f'unknown arguments for {extra}')
 
         for attr, value in attrs_values.items():
@@ -297,8 +315,7 @@ class Structured:
 
         :param readable: readable file-like object.
         """
-        for attr, value in zip(self.attrs,
-                               self.serializer.unpack_read(readable)):
+        for attr, value in zip(self.attrs, self.serializer.unpack_read(readable)):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -309,15 +326,12 @@ class Structured:
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zip(self.attrs,
-                               self.serializer.unpack_from(buffer, offset)):
+        for attr, value in zip(self.attrs, self.serializer.unpack_from(buffer, offset)):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self.serializer.pack(
-            *(getattr(self, attr) for attr in self.attrs)
-        )
+        return self.serializer.pack(*(getattr(self, attr) for attr in self.attrs))
 
     def pack_write(self, writable: BinaryIO) -> None:
         """Pack the class's values according to the format string, then write
@@ -326,8 +340,7 @@ class Structured:
         :param writable: writable file-like object.
         """
         self.serializer.pack_write(
-            writable,
-            *(getattr(self, attr) for attr in self.attrs)
+            writable, *(getattr(self, attr) for attr in self.attrs)
         )
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
@@ -338,9 +351,7 @@ class Structured:
         :param offset: position in the buffer to start writing data to.
         """
         self.serializer.pack_into(
-            buffer,
-            offset,
-            *(getattr(self, attr) for attr in self.attrs)
+            buffer, offset, *(getattr(self, attr) for attr in self.attrs)
         )
 
     ## Creation of objects from unpackable types
@@ -356,10 +367,8 @@ class Structured:
 
     @classmethod
     def create_unpack_from(
-            cls: type[_C],
-            buffer: ReadableBuffer,
-            offset: int = 0
-        ) -> _C:
+        cls: type[_C], buffer: ReadableBuffer, offset: int = 0
+    ) -> _C:
         """Create a new instance, initialized with values unpacked from a buffer
         supporting the Buffer Protocol.
 
@@ -382,9 +391,8 @@ class Structured:
     @classmethod
     @cache
     def create_attribute_serializer(
-            cls,
-            *attributes: str
-        ) -> tuple[Serializer, tuple[str, ...]]:
+        cls, *attributes: str
+    ) -> tuple[Serializer, tuple[str, ...]]:
         """Create a serializer for handling just the given attributes.  This may
         be as simple as returning the default serializer, or returning a sub
         serializer in a CompoundSerializer.  Otherwise, a new one will have to
@@ -399,47 +407,38 @@ class Structured:
         if num_requested < num_attrs:
             # TODO: Say which ones
             raise AttributeError('Attributes specified multiple times.')
-        if (unhandled := attrs - set(cls.attrs)):
+        if unhandled := attrs - set(cls.attrs):
             raise AttributeError(
-                 'Cannot serialize the following attributes:\n'
+                'Cannot serialize the following attributes:\n'
                 f'{unhandled}\n'
-                 'If they are meant to be serailized, make sure to annotate '
-                 'them appropriately.'
-                )
+                'If they are meant to be serailized, make sure to annotate '
+                'them appropriately.'
+            )
         # TODO: optimization possible?  Most of the calls here are cached
         # already, so the most expensive part is the get_type_hints part.  But
         # this method is cached too, so just go as is?
         items = get_type_hints(cls, include_extras=True).items()
-        hints = {
-            attr: attr_type
-            for attr, attr_type in items
-            if attr in attrs
-        }
+        hints = {attr: attr_type for attr, attr_type in items if attr in attrs}
         return create_serializer(hints, cls.byte_order)
-
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
-        vals = ', '.join((
-            f'{attr}={getattr(self, attr)}'
-            for attr in self.attrs
-        ))
+        vals = ', '.join((f'{attr}={getattr(self, attr)}' for attr in self.attrs))
         return f'{type(self).__name__}({vals})'
 
     def __eq__(self, other) -> bool:
         if type(other) == type(self):
-            return all((
-                getattr(self, attr) == getattr(other, attr)
-                for attr in self.attrs
-            ))
+            return all(
+                (getattr(self, attr) == getattr(other, attr) for attr in self.attrs)
+            )
         return NotImplemented
 
     def __init_subclass__(
-            cls,
-            byte_order: ByteOrder = ByteOrder.DEFAULT,
-            byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
-            **kwargs,
-        ) -> None:
+        cls,
+        byte_order: ByteOrder = ByteOrder.DEFAULT,
+        byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
+        **kwargs,
+    ) -> None:
         """Subclassing a Structured type.  We need to compute new values for the
         serializer and attrs.
 
@@ -452,9 +451,11 @@ class Structured:
         """
         super().__init_subclass__(**kwargs)
         # Check for byte order conflicts
-        if (base := get_structured_base(cls)):
-            if (byte_order_mode is ByteOrderMode.STRICT and
-                base.byte_order is not byte_order):
+        if base := get_structured_base(cls):
+            if (
+                byte_order_mode is ByteOrderMode.STRICT
+                and base.byte_order is not byte_order
+            ):
                 raise ValueError(
                     'Incompatable byte order specifications between class '
                     f'{cls.__name__} ({byte_order.name}) and base class '
@@ -468,8 +469,7 @@ class Structured:
             base_to_origbase = {
                 origin: orig_base
                 for orig_base in orig_bases
-                if (origin := get_origin(orig_base))
-                    and issubclass(origin, Structured)
+                if (origin := get_origin(orig_base)) and issubclass(origin, Structured)
             }
             orig_base = base_to_origbase.get(base, None)
             if orig_base:
@@ -487,13 +487,11 @@ class Structured:
         cls.attrs = attrs
         cls.byte_order = byte_order
 
-
-
     @classmethod
     def _get_specialization_hints(
-            cls,
-            *args,
-        ) -> tuple[dict[str, Any], dict[str, Any]]:
+        cls,
+        *args,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Get needed updates to __annotations__ and __dict__ if this class were
         to be specialized with `args`,
         """
@@ -529,9 +527,7 @@ class Structured:
         for base, alias in supers.items():
             args = get_args(alias)
             args = (tvar_map.get(arg, arg) for arg in args)
-            super_annotations, super_classdict = base._get_specialization_hints(
-                *args
-            )
+            super_annotations, super_classdict = base._get_specialization_hints(*args)
             all_annotations.append(super_annotations)
             all_classdict.append(super_classdict)
         final_annotations = reduce(operator.or_, reversed(all_annotations))

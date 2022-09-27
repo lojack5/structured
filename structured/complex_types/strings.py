@@ -4,8 +4,10 @@ to its potentially Serailizer nature when used with a dynamic size.
 """
 __all__ = [
     'EncoderDecoder',
-    'unicode', 'char',
-    'null_unicode', 'null_char',
+    'unicode',
+    'char',
+    'null_unicode',
+    'null_char',
     'NET',
 ]
 
@@ -14,18 +16,30 @@ import struct
 from functools import cache, partial
 
 from ..base_types import (
-    ByteOrder, Serializer, StructSerializer, counted, requires_indexing,
+    ByteOrder,
+    Serializer,
+    StructSerializer,
+    counted,
+    requires_indexing,
     struct_cache,
 )
 from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
 from ..type_checking import (
-    Annotated, Any, Callable, ClassVar, ReadableBuffer, BinaryIO, TypeVar,
-    Union, WritableBuffer, cast,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    ReadableBuffer,
+    BinaryIO,
+    TypeVar,
+    Union,
+    WritableBuffer,
+    cast,
 )
 from ..utils import StructuredAlias, specialized
 
 
-_SizeTypes = (_uint8, _uint16, _uint32, _uint64)    # py 3.9 isinstance/subclass
+_SizeTypes = (_uint8, _uint16, _uint32, _uint64)  # py 3.9 isinstance/subclass
 SizeTypes = Union[_uint8, _uint16, _uint32, _uint64]
 Encoder = Callable[[str], bytes]
 Decoder = Callable[[bytes], str]
@@ -54,6 +68,7 @@ class char(_char):
                       type[Union[uint8, uint16, uint32, uint64]],
                       type[NET]]
     """
+
     def __class_getitem__(cls, args) -> type[bytes]:
         """Create a char specialization."""
         if not isinstance(args, tuple):
@@ -63,9 +78,9 @@ class char(_char):
     @classmethod
     @cache
     def _create(
-            cls,
-            count: Union[int, type[SizeTypes], type[NET]],
-        ) -> type[bytes]:
+        cls,
+        count: Union[int, type[SizeTypes], type[NET]],
+    ) -> type[bytes]:
         if isinstance(count, int):
             new_cls = _char[count]
         elif count in _SizeTypes:
@@ -73,7 +88,7 @@ class char(_char):
         elif count is NET:
             new_cls = _net_char
         elif isinstance(count, TypeVar):
-            return StructuredAlias(cls, (count,))   # type: ignore
+            return StructuredAlias(cls, (count,))  # type: ignore
         elif isinstance(count, bytes):
             new_cls = _terminated_char[count]
         else:
@@ -89,6 +104,7 @@ class EncoderDecoder:
     Subclass and implement encode for encoding a string to bytes, and decode
     for decoding a string from bytes.
     """
+
     @classmethod
     def encode(cls, strng: str) -> bytes:
         """Encode `strng`.
@@ -96,7 +112,7 @@ class EncoderDecoder:
         :param strng: String to encode.
         :return: The encoded bytestring.
         """
-        raise NotImplementedError   # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
     @classmethod
     def decode(cls, byts: bytes) -> str:
@@ -106,7 +122,7 @@ class EncoderDecoder:
         :return: The decoded string.
         :rtype: str
         """
-        raise NotImplementedError   # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
 
 class unicode(str, requires_indexing):
@@ -123,11 +139,12 @@ class unicode(str, requires_indexing):
     :param encoding: Encoding method to use.
     :type encoding: Union[str, type[EncoderDecoder]]
     """
+
     @classmethod
     def __class_getitem__(cls, args) -> type[str]:
         """Create the specialization."""
         if not isinstance(args, tuple):
-            args = (args, )
+            args = (args,)
         # Cache doesn't place nice with default args,
         # _create(uint8)
         # _create(uint8, 'utf8')
@@ -137,19 +154,19 @@ class unicode(str, requires_indexing):
 
     @classmethod
     def create(
-            cls,
-            count: Union[int, type[SizeTypes], type[NET]],
-            encoding: Union[str, type[EncoderDecoder]] = 'utf8',
-        ) -> type[str]:
+        cls,
+        count: Union[int, type[SizeTypes], type[NET]],
+        encoding: Union[str, type[EncoderDecoder]] = 'utf8',
+    ) -> type[str]:
         return cls._create(count, encoding)
 
     @classmethod
     @cache
     def _create(
-            cls,
-            count: Union[int, type[SizeTypes], type[NET]],
-            encoding: Union[str, type[EncoderDecoder]],
-        ) -> type[str]:
+        cls,
+        count: Union[int, type[SizeTypes], type[NET]],
+        encoding: Union[str, type[EncoderDecoder]],
+    ) -> type[str]:
         """Create the specialization.
 
         :param count: Size of the *encoded* string.
@@ -161,8 +178,7 @@ class unicode(str, requires_indexing):
         if isinstance(encoding, str):
             encoder = partial(str.encode, encoding=encoding)
             decoder = partial(bytes.decode, encoding=encoding)
-        elif (isinstance(encoding, type) and
-              issubclass(encoding, EncoderDecoder)):
+        elif isinstance(encoding, type) and issubclass(encoding, EncoderDecoder):
             encoder = encoding.encode
             decoder = encoding.decode
         else:
@@ -190,6 +206,7 @@ class _static_char(StructSerializer):
     :param count: Static size of the bytestring.
     :type count: int
     """
+
     # Need a Serializer based char, so we can unicode wrap it.  Not used for
     # char[int].
     count: ClassVar[int]
@@ -199,12 +216,13 @@ class _static_char(StructSerializer):
         super().__init__(f'{self.count}s')
 
     def __class_getitem__(
-            cls: type[StructSerializer],
-            count_val: int
-        ) -> type[StructSerializer]:
+        cls: type[StructSerializer], count_val: int
+    ) -> type[StructSerializer]:
         """Create a specialization for a specific static size."""
+
         class _static(cls):
             count: ClassVar[int] = count_val
+
         return _static
 
 
@@ -214,6 +232,7 @@ class _dynamic_char(Serializer):
     :param count_type: The uint* type that holds the bytestring length.
     :type count_type: type[Union[uint8, uint16, uint32, uint64]]
     """
+
     count_type: ClassVar[type[SizeTypes]]
 
     def __init__(self, byte_order: ByteOrder) -> None:
@@ -223,9 +242,9 @@ class _dynamic_char(Serializer):
         self.size = 0
 
     def _st_count_data(
-            self,
-            values: tuple[Any, ...],
-        ) -> tuple[StructSerializer, int, bytes]:
+        self,
+        values: tuple[Any, ...],
+    ) -> tuple[StructSerializer, int, bytes]:
         """Given data pack as passed in from a Structured object, create a
         struct for packing it and its length.  Returns the struct, length, and
         bytestring to pack.
@@ -236,7 +255,7 @@ class _dynamic_char(Serializer):
         raw = values[0]
         count = len(raw)
         fmt = f'{self.count_type.format}{count}s'
-        st = struct_cache(fmt, byte_order = self.byte_order)
+        st = struct_cache(fmt, byte_order=self.byte_order)
         self.size = st.size
         return st, count, raw
 
@@ -246,10 +265,11 @@ class _dynamic_char(Serializer):
         return st.pack(count, raw)
 
     def pack_into(
-            self,
-            buffer: WritableBuffer,
-            offset: int, *values: Any,
-        ) -> None:
+        self,
+        buffer: WritableBuffer,
+        offset: int,
+        *values: Any,
+    ) -> None:
         """Pack a dynamically sized bytestring into a buffer supporting the
         Buffer Protocol.
 
@@ -276,7 +296,7 @@ class _dynamic_char(Serializer):
         """
         count = self.st.unpack(buffer)[0]
         self.size = self.st.size + count
-        return buffer[self.st.size:self.size],
+        return (buffer[self.st.size : self.size],)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         """Unpack a dynamically sized bytestring from a buffer supporting the
@@ -304,17 +324,20 @@ class _dynamic_char(Serializer):
         return st.unpack_read(readable)
 
     def __class_getitem__(
-            cls: type[Serializer],
-            count: type[SizeTypes],
-        ) -> type[Serializer]:
+        cls: type[Serializer],
+        count: type[SizeTypes],
+    ) -> type[Serializer]:
         """Create a specialization"""
+
         class _dynamic(cls):
             count_type: ClassVar[type[SizeTypes]] = count
+
         return _dynamic
 
 
 class _terminated_char(Serializer):
     """A string whose length is determined by a delimiter."""
+
     terminator: ClassVar[bytes]
     size: int
 
@@ -347,7 +370,7 @@ class _terminated_char(Serializer):
             raise ValueError('Unterminated string.')
         else:
             self.size = end + 1
-            return bytes(buffer[:end]),
+            return (bytes(buffer[:end]),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
         size = 0
@@ -356,7 +379,7 @@ class _terminated_char(Serializer):
             while buffer[offset + size] != term:
                 size += 1
             self.size = size + 1
-            return bytes(buffer[offset: offset + size]),
+            return (bytes(buffer[offset : offset + size]),)
         except IndexError:
             raise ValueError(f'Unterminated string.') from None
 
@@ -378,14 +401,15 @@ class _terminated_char(Serializer):
             else:
                 raise ValueError('unterminated string.')
             self.size = size
-            return out.getvalue(),
-
+            return (out.getvalue(),)
 
     def __class_getitem__(cls, term: bytes) -> type[Serializer]:
         if len(term) != 1:
             raise ValueError('char terminator must be a single byte.')
+
         class new_cls(_terminated_char):
             terminator: ClassVar[bytes] = term
+
         return specialized(cls, term)(new_cls)
 
 
@@ -396,6 +420,7 @@ class _net_char(Serializer):
     """A .NET string serializer.  Note that the variable sized length encoding
     is dubious.
     """
+
     def __init__(self, byte_order: ByteOrder) -> None:
         # TODO: Determine if we should add the given ByteOrder, or
         # always use a specific one (need to find some docs *somewhere* on
@@ -406,9 +431,9 @@ class _net_char(Serializer):
         self.size = 0
 
     def _st_count_data(
-            self,
-            values: tuple[bytes],
-        ) -> tuple[StructSerializer, int, bytes]:
+        self,
+        values: tuple[bytes],
+    ) -> tuple[StructSerializer, int, bytes]:
         raw = values[0]
         count = len(raw)
         if count < 128:
@@ -426,11 +451,11 @@ class _net_char(Serializer):
         return st.pack(count_mark, raw)
 
     def pack_into(
-            self,
-            buffer: WritableBuffer,
-            offset: int,
-            *values: bytes,
-        ) -> None:
+        self,
+        buffer: WritableBuffer,
+        offset: int,
+        *values: bytes,
+    ) -> None:
         st, count_mark, raw = self._st_count_data(values)
         st.pack_into(buffer, offset, count_mark, raw)
 
@@ -454,13 +479,13 @@ class _net_char(Serializer):
         else:
             size = self.short_len.size
         self.size = size + count
-        return cast(bytes, buffer[size:size + count]),
+        return (cast(bytes, buffer[size : size + count]),)
 
     def unpack_from(
-            self,
-            buffer: ReadableBuffer,
-            offset: int = 0,
-        ) -> tuple[bytes]:
+        self,
+        buffer: ReadableBuffer,
+        offset: int = 0,
+    ) -> tuple[bytes]:
         count = self.short_len.unpack_from(buffer, offset)[0]
         if count >= 128:
             count = self.long_len.unpack_from(buffer, offset)[0]
@@ -482,14 +507,14 @@ class _net_char(Serializer):
         else:
             size = self.short_len.size
         self.size = size + count
-        return readable.read(count),
+        return (readable.read(count),)
 
 
 def unicode_wrap(
-        base: type[Serializer],
-        encoder_fn: Encoder,
-        decoder_fn: Decoder,
-    ) -> type[Serializer]:
+    base: type[Serializer],
+    encoder_fn: Encoder,
+    decoder_fn: Decoder,
+) -> type[Serializer]:
     """Create a unicode specialization.  Extends a char[] serializer class to
     apply encoding/decoding to packing/unpacking.
 
@@ -498,6 +523,7 @@ def unicode_wrap(
     :param decoder_fn: A method which takes bytes and decodes to a string.
     :return: The unicode specialization.
     """
+
     class _unicode(base):
         encoder: ClassVar[Encoder] = encoder_fn
         decoder: ClassVar[Decoder] = decoder_fn
@@ -506,29 +532,29 @@ def unicode_wrap(
             return super().pack(self.encoder(values[0]))
 
         def pack_into(
-                self,
-                buffer: WritableBuffer,
-                offset: int,
-                *values: str,
-            ) -> None:
+            self,
+            buffer: WritableBuffer,
+            offset: int,
+            *values: str,
+        ) -> None:
             super().pack_into(buffer, offset, self.encoder(values[0]))
 
         def pack_write(self, writable: BinaryIO, *values: str) -> None:
             super().pack_write(writable, self.encoder(values[0]))
 
         def unpack(self, buffer: ReadableBuffer) -> tuple[str]:
-            return self.decoder(super().unpack(buffer)[0]).rstrip('\0'),
+            return (self.decoder(super().unpack(buffer)[0]).rstrip('\0'),)
 
         def unpack_from(
-                self,
-                buffer: ReadableBuffer,
-                offset: int = 0,
-            ) -> tuple[str]:
-            return self.decoder(
-                super().unpack_from(buffer, offset)[0]).rstrip('\0'),
+            self,
+            buffer: ReadableBuffer,
+            offset: int = 0,
+        ) -> tuple[str]:
+            return (self.decoder(super().unpack_from(buffer, offset)[0]).rstrip('\0'),)
 
         def unpack_read(self, readable: BinaryIO) -> tuple[str]:
-            return self.decoder(super().unpack_read(readable)[0]).rstrip('\0'),
+            return (self.decoder(super().unpack_read(readable)[0]).rstrip('\0'),)
+
     return _unicode
 
 

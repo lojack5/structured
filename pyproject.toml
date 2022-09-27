@@ -44,4 +44,5 @@ classifiers = [
 'Homepage' = 'https://github.com/lojack5/structured'
 'Bug Tracker' = 'https://github.com/lojack5/structured/issues'
 
-
+[tool.black]
+skip-string-normalization = true
