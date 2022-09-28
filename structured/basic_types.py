@@ -216,9 +216,10 @@ def unwrap_annotated(x: Any) -> Any:
     return x
 
 
-## NOTE: This typehint isn't working how I want.  The issue is stemming from
-## using Annotated instances, and wanting the type to be one of those, or a
-## subclass of format_type.  Look into if this is even possible with hints.
+# NOTE: This typehint isn't working how I want.  The issue is stemming from
+# using Annotated instances, and wanting the type to be one of those, or a
+# subclass of format_type.  Look into if this is even possible with hints.
+#
 # TTypes = Union[
 #    # Can be exactly one of the Annotated types
 #    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
@@ -226,6 +227,8 @@ def unwrap_annotated(x: Any) -> Any:
 #    # Or any format_type
 #    format_type,
 # ]
+
+
 class Formatted(format_type):
     """Class used for creating new `format_type`s.  Provides a class getitem
     to select the format specifier, by grabbing from one of the provided format
@@ -269,6 +272,7 @@ class Formatted(format_type):
                 )
             fmt = unwrapped.format
         action = getattr(cls, 'unpack_action', noop_action)
+
         # Create the subclass
         @specialized(cls, key)
         class _Formatted(cls):

@@ -381,7 +381,7 @@ class _terminated_char(Serializer):
             self.size = size + 1
             return (bytes(buffer[offset : offset + size]),)
         except IndexError:
-            raise ValueError(f'Unterminated string.') from None
+            raise ValueError('Unterminated string.') from None
 
     def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
         size = 0

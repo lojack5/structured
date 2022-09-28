@@ -10,11 +10,21 @@ __all__ = [
 
 import operator
 import re
-from functools import reduce
+from functools import reduce, cache
 
-from structured.utils import StructuredAlias
+from .utils import StructuredAlias
 
-from .base_types import *
+from .base_types import (
+    format_type,
+    Serializer,
+    requires_indexing,
+    structured_type,
+    ByteOrder,
+    ByteOrderMode,
+    StructSerializer,
+    struct_cache,
+    CompoundSerializer,
+)
 from .basic_types import pad, unwrap_annotated
 from .type_checking import (
     Any,
@@ -300,7 +310,7 @@ class Structured:
         for attr, value in attrs_values.items():
             setattr(self, attr, value)
 
-    ## General packers/unpackers
+    # General packers/unpackers
     def unpack(self, buffer: ReadableBuffer) -> None:
         """Unpack values from the bytes-like `buffer` and assign them to members
 
@@ -354,7 +364,7 @@ class Structured:
             buffer, offset, *(getattr(self, attr) for attr in self.attrs)
         )
 
-    ## Creation of objects from unpackable types
+    # Creation of objects from unpackable types
     @classmethod
     def create_unpack(cls: type[_C], buffer: ReadableBuffer) -> _C:
         """Create a new instance, initialized with values unpacked from a

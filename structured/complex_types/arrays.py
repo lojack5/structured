@@ -12,6 +12,7 @@ import io
 from functools import cache
 from itertools import repeat
 
+from ..structured import Structured
 from ..base_types import (
     ByteOrder,
     Serializer,
@@ -20,7 +21,21 @@ from ..base_types import (
     requires_indexing,
     struct_cache,
 )
-from ..basic_types import *
+from ..basic_types import (
+    bool8,
+    int8,
+    uint8,
+    int16,
+    uint16,
+    int32,
+    uint32,
+    int64,
+    uint64,
+    float16,
+    float32,
+    float64,
+    unwrap_annotated,
+)
 from ..type_checking import (
     Annotated,
     Any,
@@ -33,8 +48,15 @@ from ..type_checking import (
     WritableBuffer,
     get_type_hints,
 )
-from ..utils import specialized
-from .array_headers import *
+from ..utils import specialized, StructuredAlias
+from .array_headers import (
+    HeaderBase,
+    StaticHeader,
+    StaticCheckedHeader,
+    DynamicCheckedHeader,
+    Header,
+    SizeTypes,
+)
 
 
 T = TypeVar('T', bound=Header)

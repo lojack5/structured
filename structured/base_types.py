@@ -135,6 +135,7 @@ class counted(format_type):
             raise TypeError('count must be an integer.')
         elif count <= 0:
             raise ValueError('count must be positive.')
+
         # Create the specialization
         @specialized(cls, count)
         class _counted(cls):

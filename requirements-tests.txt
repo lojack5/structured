@@ -5,3 +5,5 @@
 pytest~=7.1.2
 pytest-cov~=3.0.0
 black~=22.8.0
+flake8~=5.0.4
+Flage8-pyproject~=1.1.0
