@@ -41,6 +41,8 @@ jobs:
 
     - name: Check formatting with black
       uses: psf/black@stable
+      with:
+        src: "./structured"
 
     - name: Lint with flake8
       run: |
