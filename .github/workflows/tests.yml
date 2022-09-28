@@ -21,16 +21,29 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
       with:
         fetch-depth: 1
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
         cache-dependency-path: requirements-tests.txt
+
     - name: Install dependencies
       run: pip install -r requirements-tests.txt
+
     - name: Test with pytest
       run: pytest
+
+    - name: Check formatting with black
+      uses: psf/black@stable
+
+    - name: Lint with flake8
+      run: |
+        # Use the flake8-pyproject entry point to pull in config from
+        # pyproject.toml
+        flake8p structured
