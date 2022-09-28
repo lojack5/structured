@@ -1,8 +1,21 @@
 import sys
 import typing
 from typing import (
-    Annotated, Any, Callable, ClassVar, Container, Generic, NoReturn, Optional,
-    TypeVar, Union, cast, get_args, get_origin, get_type_hints, BinaryIO,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Container,
+    Generic,
+    NoReturn,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    BinaryIO,
 )
 
 if sys.version_info < (3, 10):
@@ -24,13 +37,13 @@ def update_annotations(cls: type, annotations: dict[str, Any]) -> None:
     else:
         setattr(cls, '__annotations__', annotations)
 
+
 def get_annotations(cls: type) -> dict[str, Any]:
     """Python <3.10 compatible way to get a class's annotations dict.  See:
 
     https://docs.python.org/3/howto/annotations.html#accessing-the-annotations-dict-of-an-object-in-python-3-9-and-older
     """
     return cls.__dict__.get('__annotations__', {})
-
 
 
 def isclassvar(annotation: Any) -> bool:
@@ -57,12 +70,18 @@ if typing.TYPE_CHECKING:
     # the most common stdlib buffer classes in a Union.
     if sys.version_info >= (3, 8):
         WritableBuffer: TypeAlias = Union[
-            bytearray, memoryview, array.array[Any], mmap.mmap,
+            bytearray,
+            memoryview,
+            array.array[Any],
+            mmap.mmap,
             # ctypes._CData, pickle.PickleBuffer
         ]
     else:
         WritableBuffer: TypeAlias = Union[  # type: ignore
-            bytearray, memoryview, array.array[Any], mmap.mmap,
+            bytearray,
+            memoryview,
+            array.array[Any],
+            mmap.mmap,
             # ctypes._CData
         ]
     ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WritableBuffer]

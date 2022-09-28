@@ -1,5 +1,6 @@
 ![tests](https://github.com/lojack5/structured/actions/workflows/tests.yml/badge.svg)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 # structured - creating classes which pack and unpack with Python's `struct` module.
 This is a small little library to let you leverage type hints to define classes which can also be packed and unpacked using Python's `struct` module.  The basic usage is almost like a dataclass:

@@ -27,6 +27,7 @@ class HeaderBase:
     TODO: Investigate if making this a Protocol will work with the desired
     effect
     """
+
     def __init__(self, count: int, data_size: int) -> None:
         """Set count and data_size as applicable."""
 
@@ -38,6 +39,7 @@ class HeaderBase:
 
 class StaticHeader(HeaderBase, Structured):
     """StaticHeader representing a statically sized array."""
+
     # NOTE: HeaderBase first, to get it's __init__
     _count: ClassVar[int] = 0
     data_size: ClassVar[int] = 0
@@ -61,8 +63,10 @@ class StaticHeader(HeaderBase, Structured):
         """Specialize for a specific static size."""
         if count <= 0:
             raise ValueError('count must be positive')
+
         class _StaticHeader(StaticHeader):
             _count: ClassVar[int] = count
+
         return _StaticHeader
 
 
@@ -70,6 +74,7 @@ class DynamicHeader(Generic[TCount], Structured, HeaderBase):
     """Base for dynamically sized arrays, where the array length is just prior
     to the array data.
     """
+
     count: TCount
     data_size: ClassVar[int] = 0
     two_pass: ClassVar[bool] = False
@@ -80,7 +85,9 @@ class DynamicHeader(Generic[TCount], Structured, HeaderBase):
 
     @classmethod
     def specialize(cls, count_type: type[SizeTypes]) -> type[DynamicHeader]:
-        class _DynamicHeader(DynamicHeader[count_type]): pass
+        class _DynamicHeader(DynamicHeader[count_type]):
+            pass
+
         return _DynamicHeader
 
 
@@ -88,6 +95,7 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
     """Statically sized array, with a size check int packed just prior to the
     array data.
     """
+
     _count: ClassVar[int] = 0
     data_size: TSize
     two_pass: ClassVar[bool] = True
@@ -114,16 +122,15 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
         """Verify correct array length."""
         if new_count != self._count:
             raise ValueError(
-                f'expected an array of length {self._count}, but got '
-                f'{new_count}'
+                f'expected an array of length {self._count}, but got ' f'{new_count}'
             )
 
     @classmethod
     def specialize(
-            cls,
-            count: int,
-            size_type: type[SizeTypes],
-        ) -> type[StaticCheckedHeader]:
+        cls,
+        count: int,
+        size_type: type[SizeTypes],
+    ) -> type[StaticCheckedHeader]:
         """Specialize for the specific static size and check type.
 
         :param count: Static length for the array.
@@ -132,13 +139,16 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
         """
         if count <= 0:
             raise ValueError('count must be positive')
+
         class _StaticCheckedHeader(StaticCheckedHeader[size_type]):
             _count: ClassVar[int] = count
+
         return _StaticCheckedHeader
 
 
 class DynamicCheckedHeader(Generic[TCount, TSize], Structured, HeaderBase):
     """Dynamically sized array with a size check."""
+
     count: TCount
     data_size: TSize
     two_pass: ClassVar[bool] = True
@@ -155,17 +165,18 @@ class DynamicCheckedHeader(Generic[TCount, TSize], Structured, HeaderBase):
 
     @classmethod
     def specialize(
-            cls,
-            count_type: type[SizeTypes],
-            size_type: type[SizeTypes]
-        ) -> type[DynamicCheckedHeader]:
+        cls, count_type: type[SizeTypes], size_type: type[SizeTypes]
+    ) -> type[DynamicCheckedHeader]:
         """Specialize for the specific count type and check type.
 
         :param count_type: Type of integer to unpack for the array length.
         :param size_type: Type of integer to unpack for the array data size.
         :return: The specialized Header class.
         """
-        class _DynamicCheckedHeader(DynamicCheckedHeader[count_type, size_type]): pass
+
+        class _DynamicCheckedHeader(DynamicCheckedHeader[count_type, size_type]):
+            pass
+
         return _DynamicCheckedHeader
 
 
@@ -173,6 +184,7 @@ class Header(Structured, HeaderBase):
     """Pseudo-Header class that's used to specialize to one of the concrete
     ones.
     """
+
     count: int
     data_size: int
     two_pass: ClassVar[bool]
@@ -182,7 +194,7 @@ class Header(Structured, HeaderBase):
         appropriate Header type.
         """
         if not isinstance(key, tuple):
-            key = (key, )
+            key = (key,)
         return cls.create(*map(unwrap_annotated, key))
 
     @classmethod
@@ -195,10 +207,8 @@ class Header(Structured, HeaderBase):
     @classmethod
     @cache
     def _create(
-            cls,
-            count: Union[int, type[SizeTypes]],
-            size_check: Optional[type[SizeTypes]]
-        ) -> type[Header]:
+        cls, count: Union[int, type[SizeTypes]], size_check: Optional[type[SizeTypes]]
+    ) -> type[Header]:
         """Check header arguments and dispatch to the correct Header
         specialization.
 
@@ -209,21 +219,19 @@ class Header(Structured, HeaderBase):
         """
         # TypeVar quick out.
         if isinstance(count, TypeVar) or isinstance(size_check, TypeVar):
-            return StructuredAlias(cls, (count, size_check))    # type: ignore
+            return StructuredAlias(cls, (count, size_check))  # type: ignore
         # Final type checking
         if size_check is not None:
-            if not (isinstance(size_check, type) and
-                    issubclass(size_check, _SizeTypes)):
+            if not (
+                isinstance(size_check, type) and issubclass(size_check, _SizeTypes)
+            ):
                 raise TypeError('size check must be a uint* type.')
         elif not isinstance(count, int):
-            if not (isinstance(count, type) and
-                    issubclass(count, _SizeTypes)):
-                raise TypeError(
-                    'array length must be an integer or uint* type.'
-                )
+            if not (isinstance(count, type) and issubclass(count, _SizeTypes)):
+                raise TypeError('array length must be an integer or uint* type.')
         # Dispatch
         if size_check is None:
-            args = (count, )
+            args = (count,)
             if isinstance(count, int):
                 header = StaticHeader.specialize(count)
             else:

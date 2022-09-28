@@ -56,7 +56,13 @@ from io import BytesIO
 from itertools import chain
 
 from .type_checking import (
-    _T, Annotated, Any, Callable, ClassVar, ReadableBuffer, BinaryIO,
+    _T,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    ReadableBuffer,
+    BinaryIO,
     WritableBuffer,
 )
 from .utils import specialized
@@ -66,6 +72,7 @@ class ByteOrder(str, Enum):
     """Byte order specifiers for passing to the struct module.  See the stdlib
     documentation for details on what each means.
     """
+
     DEFAULT = ''
     LITTLE_ENDIAN = '<'
     LE = LITTLE_ENDIAN
@@ -77,8 +84,8 @@ class ByteOrder(str, Enum):
 
 
 class ByteOrderMode(str, Enum):
-    """How derived classes with conflicting byte order markings should function.
-    """
+    """How derived classes with conflicting byte order markings should function."""
+
     OVERRIDE = 'override'
     STRICT = 'strict'
 
@@ -110,6 +117,7 @@ class format_type(structured_type):
     Types which derived from `format_type` have the advantage of being able to
     pack/unpack as one block of variables, rather than handling one at a time.
     """
+
     format: ClassVar[str] = ''
     unpack_action: Callable[[Any], Any] = noop_action
 
@@ -118,6 +126,7 @@ class counted(format_type):
     """Base class for `format_type`s that often come in continuous blocks of a
     fixed number of instances.  The examples are char and pad characters.
     """
+
     @classmethod
     @cache
     def __class_getitem__(cls: type[counted], count: int) -> type[counted]:
@@ -126,10 +135,12 @@ class counted(format_type):
             raise TypeError('count must be an integer.')
         elif count <= 0:
             raise ValueError('count must be positive.')
+
         # Create the specialization
         @specialized(cls, count)
         class _counted(cls):
             format: ClassVar[str] = f'{count}{cls.format}'
+
         return Annotated[cls, _counted]
 
 
@@ -141,19 +152,24 @@ class Serializer(structured_type):
 
     def pack(self, *values: Any) -> bytes:
         raise NotImplementedError
+
     def pack_into(
-            self,
-            buffer: WritableBuffer,
-            offset: int,
-            *values: Any,
-        ) -> None:
+        self,
+        buffer: WritableBuffer,
+        offset: int,
+        *values: Any,
+    ) -> None:
         raise NotImplementedError
+
     def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         raise NotImplementedError
+
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         raise NotImplementedError
+
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         raise NotImplementedError
+
     def unpack_read(self, readable: BinaryIO) -> tuple:
         raise NotImplementedError
 
@@ -161,11 +177,13 @@ class Serializer(structured_type):
 # Some concrete serializers
 class StructSerializer(struct.Struct, Serializer):
     def unpack(self, buffer: ReadableBuffer) -> tuple:
-        return super().unpack(buffer[:self.size])
+        return super().unpack(buffer[: self.size])
+
     def unpack_read(self, readable: BinaryIO) -> tuple:
         # NOTE: use super-class's unpack to not interfere with custom
         # logic in subclasses
         return super().unpack(readable.read(self.size))
+
     def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         # NOTE: Call the super-class's pack, so we don't interfere with
         # any custom logic in pack_write for subclasses
@@ -177,19 +195,18 @@ def apply_actions(unpacker):
     def wrapped(self, *args, **kwargs):
         return tuple(
             action(value)
-            for action, value in zip(
-                self.actions, unpacker(self, *args, **kwargs)
-                )
+            for action, value in zip(self.actions, unpacker(self, *args, **kwargs))
         )
+
     return wrapped
 
 
 class StructActionSerializer(StructSerializer):
     def __init__(
-            self,
-            actions: tuple[Callable[[Any], Any], ...],
-            fmt: str,
-        ) -> None:
+        self,
+        actions: tuple[Callable[[Any], Any], ...],
+        fmt: str,
+    ) -> None:
         super().__init__(fmt)
         self.actions = actions
 
@@ -215,11 +232,11 @@ class CompoundSerializer(Serializer):
             return out.getvalue()
 
     def pack_into(
-            self,
-            buffer: WritableBuffer,
-            offset: int,
-            *values: Any,
-        ) -> None:
+        self,
+        buffer: WritableBuffer,
+        offset: int,
+        *values: Any,
+    ) -> None:
         size = 0
         for serializer, attr_slice in self.serializers.items():
             serializer.pack_into(buffer, offset + size, *(values[attr_slice]))
@@ -262,10 +279,10 @@ class CompoundSerializer(Serializer):
 
 @cache
 def struct_cache(
-        format: str,
-        actions: tuple[Callable[[Any], Any], ...] = (),
-        byte_order: ByteOrder = ByteOrder.DEFAULT,
-    ) -> StructSerializer:
+    format: str,
+    actions: tuple[Callable[[Any], Any], ...] = (),
+    byte_order: ByteOrder = ByteOrder.DEFAULT,
+) -> StructSerializer:
     """Cached struct.Struct creation.
 
     :param format: struct packing format string.

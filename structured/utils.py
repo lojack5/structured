@@ -5,7 +5,13 @@ import warnings
 from functools import wraps
 
 from .type_checking import (
-    _T, Any, Callable, NoReturn, Optional, ParamSpec, TypeVar,
+    _T,
+    Any,
+    Callable,
+    NoReturn,
+    Optional,
+    ParamSpec,
+    TypeVar,
 )
 
 
@@ -23,19 +29,15 @@ def specialized(base_cls: type, *args: Any) -> Callable[[type[_T]], type[_T]]:
     :param cls: The class to mark as already specialized.
     :return: The class with described modifications.
     """
+
     def wrapper(cls: type[_T]) -> type[_T]:
         setattr(cls, '__class_getitem__', __error_getitem__)
-        qualname = ', '.join((
-            getattr(k, '__qualname__', f'{k}')
-            for k in args
-        ))
-        name = ', '.join((
-            getattr(k, '__name__', f'{k}')
-            for k in args
-        ))
+        qualname = ', '.join((getattr(k, '__qualname__', f'{k}') for k in args))
+        name = ', '.join((getattr(k, '__name__', f'{k}') for k in args))
         cls.__qualname__ = f'{base_cls.__qualname__}[{qualname}]'
         cls.__name__ = f'{base_cls.__name__}[{name}]'
         return cls
+
     return wrapper
 
 
@@ -43,6 +45,7 @@ class StructuredAlias:
     """Class to hold one of the structured types that takes types as arguments,
     which has been passes either another StructuredAlias or a TypeVar.
     """
+
     cls: type
     args: tuple
 
@@ -68,15 +71,12 @@ class StructuredAlias:
                 arg = arg.resolve(tvar_map)
             resolved.append(arg)
         resolved = tuple(resolved)
-        if any((
-                isinstance(arg, (TypeVar, StructuredAlias))
-                for arg in resolved
-            )):
+        if any((isinstance(arg, (TypeVar, StructuredAlias)) for arg in resolved)):
             # Act as immutable, so create a new instance, since these objects
             # are often cached in type factory indexing methods.
             return StructuredAlias(self.cls, resolved)
         else:
-            return self.cls[resolved]   # type: ignore
+            return self.cls[resolved]  # type: ignore
 
 
 # nice deprecation warnings, ideas taken from Trio
@@ -109,17 +109,20 @@ def _issue_url(issue: int) -> str:
     :param issue: Issue number to link to.
     :return: The uri to the issue.
     """
-    return f'https://github.com/lojack5/structured/issuespython-trio/trio/issues/{issue}'
+    return (
+        f'https://github.com/lojack5/structured/issuespython-trio/trio/issues/{issue}'
+    )
 
 
 def warn_deprecated(
-        x: Any, version: str,
-        removal: str,
-        *,
-        issue: Optional[int],
-        use_instead: Any,
-        stacklevel: int = 2,
-    ) -> None:
+    x: Any,
+    version: str,
+    removal: str,
+    *,
+    issue: Optional[int],
+    use_instead: Any,
+    stacklevel: int = 2,
+) -> None:
     """Emit a deprecation warning for using object `x`.
 
     :param x: The object that is being used.
@@ -130,8 +133,10 @@ def warn_deprecated(
     :param stacklevel: Stack-frame to have this warning show up in.
     """
     stacklevel += 1
-    msg = (f'{_stringify(x)} is deprecated since structured-classes {version} '
-           f'and will be removed in structured-classes {removal}')
+    msg = (
+        f'{_stringify(x)} is deprecated since structured-classes {version} '
+        f'and will be removed in structured-classes {removal}'
+    )
     if use_instead is None:
         msg += ' with no replacement'
     else:
@@ -143,14 +148,16 @@ def warn_deprecated(
 
 P = ParamSpec('P')
 T = TypeVar('T')
+
+
 def deprecated(
-        version: str,
-        removal: str,
-        *,
-        x: Any = None,
-        issue: int,
-        use_instead: Any,
-    ) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    version: str,
+    removal: str,
+    *,
+    x: Any = None,
+    issue: int,
+    use_instead: Any,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Decorate a callable as deprecated.
     Usage:
         @deprecated(version, removal [, issue=..., use_instead=...])
@@ -164,14 +171,13 @@ def deprecated(
     :param x: Callable to mark as deprecated.
     :return: The wrapped callable which emits deprecation warning.
     """
+
     def inner(fn: Callable[P, T]) -> Callable[P, T]:
         nonlocal x
 
         @wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            warn_deprecated(
-                x, version, removal, use_instead=use_instead, issue=issue
-            )
+            warn_deprecated(x, version, removal, use_instead=use_instead, issue=issue)
             return fn(*args, **kwargs)
 
         # If our __module__ or __qualname__ get modified, we want to pick up
@@ -192,4 +198,5 @@ def deprecated(
             wrapper.__doc__ = doc
 
         return wrapper
+
     return inner
