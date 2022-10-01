@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from functools import cache
 
-from ..basic_types import uint8, uint16, uint32, uint64, unwrap_annotated
+from ..basic_types import uint8, uint16, uint32, uint64
 from ..structured import Structured
 from ..type_checking import ClassVar, Generic, Optional, TypeVar, Union, cast
 from ..utils import StructuredAlias, specialized
@@ -224,7 +224,6 @@ class Header(Structured, HeaderBase):
         elif not isinstance(count, int) and count not in _SizeTypes:
             raise TypeError('array length must be an integer or uint* type.')
         # Dispatch
-        count = unwrap_annotated(count)
         if size_check is None:
             args = (count,)
             if isinstance(count, int):
@@ -233,13 +232,8 @@ class Header(Structured, HeaderBase):
                 header = DynamicHeader.specialize(count)
         else:
             args = (count, size_check)
-            size_check = unwrap_annotated(size_check)
             if isinstance(count, int):
-                header = StaticCheckedHeader.specialize(
-                    count, size_check  # type: ignore
-                )
+                header = StaticCheckedHeader.specialize(count, size_check)
             else:
-                header = DynamicCheckedHeader.specialize(
-                    count, size_check  # type: ignore
-                )
+                header = DynamicCheckedHeader.specialize(count, size_check)
         return specialized(cls, *args)(cast(type[Header], header))
