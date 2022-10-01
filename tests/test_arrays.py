@@ -70,8 +70,8 @@ def test_errors():
 
 def test_static_format():
     class Static(Structured):
-        a: int          = serialized(int32)
-        b: list[int]    = serialized(array[Header[5], uint32])
+        a: int32
+        b: Annotated[list[uint32], array[Header[5], uint32]]
     target_obj = Static(42, [1, 2, 3, 4, 5])
 
     st = struct.Struct('i5I')
@@ -183,7 +183,7 @@ def test_static_structured(items: list[Item]):
 
 def test_static_checked_structured(items: list[Item]):
     class Compound(Structured):
-        a: list[Item] = serialized(array[Header[3, uint32], Item])
+        a: Annotated[list[Item], array[Header[3, uint32], Item]]
     target_obj = Compound(items)
 
     with io.BytesIO() as stream:

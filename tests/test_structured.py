@@ -54,7 +54,7 @@ class TestStructured:
     def test_types(self) -> None:
         class Base(Structured):
             _: pad[2]
-            __: pad
+            __: pad[1]
             a: int8
             A: uint8
             b: int16
@@ -67,9 +67,9 @@ class TestStructured:
             f: float32
             g: float64
             h: char[2]
-            i: char
+            i: char[1]
             j: pascal[2]
-            k: pascal
+            k: pascal[1]
             l: bool8
 
             other_member: int
@@ -151,7 +151,7 @@ class TestStructured:
 
     def test_unpack_read(self) -> None:
         class Base(Structured):
-            a: int  = serialized(int8)
+            a: int8
         b = Base(42)
         data = b.pack()
         with io.BytesIO(data) as stream:

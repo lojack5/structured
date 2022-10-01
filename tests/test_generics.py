@@ -1,5 +1,5 @@
 import struct
-from typing import Generic, TypeVar, Union, get_type_hints
+from typing import Annotated, Generic, TypeVar, Union, get_type_hints
 
 import pytest
 
@@ -112,7 +112,7 @@ def test_automatic_resolution():
 
 def test_serialized_generics() -> None:
     class Base(Generic[_Size], Structured):
-        a: list[_Size] = serialized(array[Header[3], _Size])
+        a: Annotated[list[_Size], array[Header[3], _Size]]
 
     class Concrete(Base[uint32]):
         pass
