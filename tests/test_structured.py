@@ -5,9 +5,7 @@ import struct
 
 import pytest
 
-import structured
 from structured import *
-from structured.base_types import structured_type
 
 
 class TestStructured:
@@ -237,13 +235,12 @@ class TestStructured:
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
-    # Linter ignores due to 'fold_overlaps' not being in __all__
-    assert structured.fold_overlaps('b', '') == 'b'          # type: ignore
-    assert structured.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore
-    assert structured.fold_overlaps('', 'b') == 'b'          # type: ignore
-
-
-class rogue_type(structured_type): pass
+    serializer = StructSerializer('b') + StructSerializer('')
+    assert serializer.format == 'b'
+    serializer = StructSerializer('4sI') + StructSerializer('I')
+    assert serializer.format == '4s2I'
+    serializer = StructSerializer('') + StructSerializer('b')
+    assert serializer.format == 'b'
 
 
 def test_create_serializers() -> None:
@@ -251,6 +248,3 @@ def test_create_serializers() -> None:
     with pytest.raises(TypeError):
         class Error(Structured):
             a: array
-    with pytest.raises(TypeError):
-        class Error2(Structured):
-            a: rogue_type

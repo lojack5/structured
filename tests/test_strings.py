@@ -4,7 +4,7 @@ import struct
 import pytest
 
 from structured import *
-from structured.basic_types import unwrap_annotated, format_type
+from structured.basic_types import unwrap_annotated
 
 
 def test_errors() -> None:
@@ -23,7 +23,7 @@ class TestChar:
     def test_static(self) -> None:
         wrapped = char[13]
         unwrapped = unwrap_annotated(wrapped)
-        assert issubclass(unwrapped, format_type)
+        assert isinstance(unwrapped, StructSerializer)
         assert unwrapped.format == '13s'
 
     def test_dynamic(self) -> None:
@@ -34,11 +34,14 @@ class TestChar:
             d: int32
 
         assert isinstance(Base.serializer, CompoundSerializer)
-        assert tuple(Base.serializer.serializers.values()) == (
-            slice(0, 1),
-            slice(1, 2),
-            slice(2, 4),
-        )
+        assert [serializer.num_values for serializer in Base.serializer.serializers] == [
+            # 'a' uint16 can't be combined with 'b' char
+            1,
+            # 'b' char can't be combined with 'c' int32
+            1,
+            # 'c' and 'd' int32 can be combined
+            2,
+        ]
         assert Base.attrs == ('a', 'b', 'c', 'd')
 
         st = struct.Struct('hBs2I')
@@ -157,11 +160,12 @@ class TestChar:
         class Base(Structured):
             short: char[NET]
             long: char[NET]
-        assert isinstance(Base.serializer, structured.CompoundSerializer)
-        assert tuple(Base.serializer.serializers.values()) == (
-            slice(0, 1),
-            slice(1, 2),
-        )
+        assert isinstance(Base.serializer, CompoundSerializer)
+        assert [serializer.num_values for serializer in Base.serializer.serializers] == [
+            # char[NET] can't be combined
+            1,
+            1,
+        ]
         assert Base.attrs == ('short', 'long')
         target_obj = Base(b'Hello', b'a'*200)
 

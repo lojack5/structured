@@ -1,5 +1,6 @@
 import struct
 import io
+from typing import Annotated
 
 import pytest
 
@@ -144,7 +145,7 @@ def test_static_format_action():
 
 def test_static_structured(items: list[Item]):
     class Compound(Structured):
-        a: list[Item] = serialized(array[Header[3], Item])
+        a: Annotated[list[Item], array[Header[3], Item]]
 
     target_obj = Compound(items)
     with io.BytesIO() as out:
