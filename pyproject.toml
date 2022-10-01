@@ -56,3 +56,6 @@ per-file-ignores = [
     'type_checking.py: F401',
     '__init__.py: F403, F401',
 ]
+
+[tool.isort]
+profile = 'black'

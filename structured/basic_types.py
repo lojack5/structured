@@ -24,17 +24,33 @@ __all__ = [
 from functools import cache
 from itertools import chain
 
-from .base_types import Serializer, counted, format_type, noop_action
+from .base_types import requires_indexing
+from .serializers import Serializer, StructActionSerializer, StructSerializer, counted
 from .type_checking import (
     Annotated,
     Any,
     Callable,
     ClassVar,
     Container,
+    Self,
+    TypeVar,
     get_args,
     get_origin,
 )
-from .utils import StructuredAlias, specialized
+from .utils import StructuredAlias
+
+bool8 = Annotated[int, StructSerializer('?')]
+int8 = Annotated[int, StructSerializer('b')]
+uint8 = Annotated[int, StructSerializer('B')]
+int16 = Annotated[int, StructSerializer('h')]
+uint16 = Annotated[int, StructSerializer('H')]
+int32 = Annotated[int, StructSerializer('i')]
+uint32 = Annotated[int, StructSerializer('I')]
+int64 = Annotated[int, StructSerializer('q')]
+uint64 = Annotated[int, StructSerializer('Q')]
+float16 = Annotated[float, StructSerializer('e')]
+float32 = Annotated[float, StructSerializer('f')]
+float64 = Annotated[float, StructSerializer('d')]
 
 
 class pad(counted):
@@ -42,119 +58,19 @@ class pad(counted):
     Padding bytes are discarded when read, and are written zeroed out.
     """
 
-    format: ClassVar[str] = 'x'
+    serializer = StructSerializer('x', 0)
+    value_type = type(None)
 
 
-class _bool8(format_type):
-    """bool struct type, stored as an integer: '?'."""
-
-    format: ClassVar[str] = '?'
-
-
-bool8 = Annotated[int, _bool8]
-
-
-class _int8(format_type):
-    """8-bit signed integer: 'b'."""
-
-    format: ClassVar[str] = 'b'
-
-
-int8 = Annotated[int, _int8]
-
-
-class _uint8(format_type):
-    """8-bit unsigned integer: 'B'."""
-
-    format: ClassVar[str] = 'B'
-
-
-uint8 = Annotated[int, _uint8]
-
-
-class _int16(format_type):
-    """16-bit signed integer: 'h'."""
-
-    format: ClassVar[str] = 'h'
-
-
-int16 = Annotated[int, _int16]
-
-
-class _uint16(format_type):
-    """16-bit unsigned integer: 'H'."""
-
-    format: ClassVar[str] = 'H'
-
-
-uint16 = Annotated[int, _uint16]
-
-
-class _int32(format_type):
-    """32-bit signed integer."""
-
-    format: ClassVar[str] = 'i'
-
-
-int32 = Annotated[int, _int32]
-
-
-class _uint32(format_type):
-    """32-bit unsigned integer: 'I'."""
-
-    format: ClassVar[str] = 'I'
-
-
-uint32 = Annotated[int, _uint32]
-
-
-class _int64(format_type):
-    """64-bit signed integer: 'q'."""
-
-    format: ClassVar[str] = 'q'
-
-
-int64 = Annotated[int, _int64]
-
-
-class _uint64(format_type):
-    """64-bit unsigned integer: 'Q'."""
-
-    format: ClassVar[str] = 'Q'
-
-
-uint64 = Annotated[int, _uint64]
-
-
-class _float16(format_type):
-    """IEEE 754 16-bit half-precision floating point number."""
-
-    format: ClassVar[str] = 'e'
-
-
-float16 = Annotated[float, _float16]
-
-
-class _float32(format_type):
-    """IEEE 754 32-bit floating point number."""
-
-    format: ClassVar[str] = 'f'
-
-
-float32 = Annotated[float, _float32]
-
-
-class _float64(format_type):
-    """IEEE 754 64-bit double-precision floating point number."""
-
-    format: ClassVar[str] = 'd'
-
-
-float64 = Annotated[float, _float64]
-
-
-# NOTE: char moved to complex_types/unicode.py, since it can optionally
-# be created with a dynamic size.
+def ispad(annotation: Any) -> bool:
+    unwrapped = unwrap_annotated(annotation)
+    # Un-indexed
+    if isinstance(unwrapped, type) and unwrapped is pad:
+        return True
+    # Indexed
+    if isinstance(unwrapped, StructSerializer) and unwrapped.num_values == 0:
+        return True
+    return False
 
 
 class pascal(str, counted):
@@ -162,7 +78,8 @@ class pascal(str, counted):
     documentation for specific details.
     """
 
-    format: ClassVar[str] = 'p'
+    serializer = StructSerializer('p')
+    value_type = str
 
 
 _AnnotatedTypes = (
@@ -184,6 +101,9 @@ _UnAnnotatedTypes = (
     pascal,
 )
 _AllTypes = tuple(chain(_AnnotatedTypes, _UnAnnotatedTypes))
+_TSize = TypeVar('_TSize', uint8, uint16, uint32, uint64)
+_TSize2 = TypeVar('_TSize2', uint8, uint16, uint32, uint64)
+_SizeTypes = (uint8, uint16, uint32, uint64)
 
 
 def unwrap_annotated(x: Any) -> Any:
@@ -205,9 +125,9 @@ def unwrap_annotated(x: Any) -> Any:
                 # b: Annotated[int, int8]
                 meta = unwrap_annotated(meta)
                 if isinstance(meta, type):
-                    if issubclass(meta, (format_type, Serializer)):
+                    if issubclass(meta, Serializer):
                         return meta
-                elif isinstance(meta, StructuredAlias):
+                elif isinstance(meta, (StructuredAlias, Serializer)):
                     return meta
             else:
                 # Annotated, but not one of the special types we're looking for
@@ -229,7 +149,7 @@ def unwrap_annotated(x: Any) -> Any:
 # ]
 
 
-class Formatted(format_type):
+class Formatted(requires_indexing):
     """Class used for creating new `format_type`s.  Provides a class getitem
     to select the format specifier, by grabbing from one of the provided format
     types.  The allowed types may be overridden by overriding cls._types.
@@ -238,13 +158,11 @@ class Formatted(format_type):
     """
 
     _types: ClassVar[Container] = frozenset()  # Container[TType]?
+    unpack_action: ClassVar[Callable[[Any], Any]]
 
     @classmethod  # Need to remark as classmethod since we're caching
     @cache
-    def __class_getitem__(
-        cls: type[Formatted],
-        key: type[format_type],
-    ) -> type[Formatted]:
+    def __class_getitem__(cls, key: StructSerializer) -> type[Self]:
         """Create an version of this class which uses the given types format
         specifier for packing/unpacking.
 
@@ -255,11 +173,11 @@ class Formatted(format_type):
         """
         unwrapped = unwrap_annotated(key)
         # Error checking
-        if not issubclass(unwrapped, format_type):
+        if not isinstance(unwrapped, StructSerializer) or unwrapped.num_values != 1:
             raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
         if cls._types is Formatted._types:
             # Default, just allow any format type
-            fmt = unwrapped.format
+            pass
         else:
             # Overridden _types, get from that set
             # NOTE: users may do _types = {int8, ...}
@@ -270,15 +188,7 @@ class Formatted(format_type):
                     'Formatted key must be one of the allowed types of '
                     f'{cls.__qualname__}.'
                 )
-            fmt = unwrapped.format
-        action = getattr(cls, 'unpack_action', noop_action)
-
-        # Create the subclass
-        @specialized(cls, key)
-        class _Formatted(cls):
-            format: ClassVar[str] = fmt
-            unpack_action: ClassVar[Callable[[Any], Formatted]]
-
-        action = action if action is not noop_action else _Formatted
-        _Formatted.unpack_action = action
-        return _Formatted
+        action = getattr(cls, 'unpack_action', cls)
+        return Annotated[
+            cls, StructActionSerializer(unwrapped.format, actions=(action,))
+        ]

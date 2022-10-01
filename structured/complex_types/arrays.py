@@ -10,54 +10,45 @@ __all__ = [
 
 import io
 from functools import cache
-from itertools import repeat
 
-from ..structured import Structured
-from ..base_types import (
-    ByteOrder,
-    Serializer,
-    StructSerializer,
-    format_type,
-    requires_indexing,
-    struct_cache,
-)
+from ..base_types import ByteOrder, requires_indexing
 from ..basic_types import (
     bool8,
-    int8,
-    uint8,
-    int16,
-    uint16,
-    int32,
-    uint32,
-    int64,
-    uint64,
     float16,
     float32,
     float64,
+    int8,
+    int16,
+    int32,
+    int64,
+    uint8,
+    uint16,
+    uint32,
+    uint64,
     unwrap_annotated,
 )
+from ..serializers import Serializer, StructSerializer
+from ..structured import Structured
 from ..type_checking import (
     Annotated,
     Any,
+    BinaryIO,
     ClassVar,
     Generic,
     NoReturn,
     ReadableBuffer,
-    BinaryIO,
     TypeVar,
     WritableBuffer,
     get_type_hints,
 )
-from ..utils import specialized, StructuredAlias
+from ..utils import StructuredAlias
 from .array_headers import (
-    HeaderBase,
-    StaticHeader,
-    StaticCheckedHeader,
     DynamicCheckedHeader,
     Header,
-    SizeTypes,
+    HeaderBase,
+    StaticCheckedHeader,
+    StaticHeader,
 )
-
 
 T = TypeVar('T', bound=Header)
 
@@ -80,7 +71,7 @@ U = TypeVar(
     float32,
     float64,
     # Or any format_type or a Structured type
-    format_type,
+    StructSerializer,
     Structured,
     covariant=True,
     # bound=Union[format_type, Structured],
@@ -126,7 +117,6 @@ class array(list[U], requires_indexing, Generic[T, U]):
         """Perform error checks and dispatch to the applicable class factory."""
         if not isinstance(args, tuple) or len(args) < 2:
             cls.error(TypeError, 'expected 2 arguments')
-        args = tuple(map(unwrap_annotated, args))
         if len(args) == 2:
             header, array_type = args
         else:
@@ -135,20 +125,6 @@ class array(list[U], requires_indexing, Generic[T, U]):
         # TypeVar checks:
         if isinstance(header, StructuredAlias) or isinstance(array_type, TypeVar):
             return StructuredAlias(cls, (header, array_type))  # type: ignore
-        # Type checking
-        if (
-            not isinstance(header, type)
-            or not issubclass(header, HeaderBase)
-            or header is HeaderBase
-            or header is Header
-        ):
-            header = Header[header]
-        if not isinstance(array_type, type) or not issubclass(
-            array_type, (format_type, Structured)
-        ):
-            cls.error(
-                TypeError, 'array object type must be a format type or Structured type'
-            )
         return cls._create(header, array_type)
 
     @classmethod
@@ -158,38 +134,39 @@ class array(list[U], requires_indexing, Generic[T, U]):
         header: type[Header],
         array_type,  # TODO: proper annotation?
     ) -> type[list[U]]:
-        """Actual creation of the header."""
-        if issubclass(array_type, format_type):
+        """Actual creation of the array."""
+        # Check header type
+        if (
+            not isinstance(header, type)
+            or not issubclass(header, HeaderBase)
+            or header is HeaderBase
+            or header is Header
+        ):
+            raise TypeError(f'invalid array header type: {type(header)}')
+        # Check object type
+        array_type = unwrap_annotated(array_type)
+        if isinstance(array_type, StructSerializer):
+            # Simple type as array object
             if issubclass(header, (StaticCheckedHeader, DynamicCheckedHeader)):
                 cls.error(
                     TypeError,
                     'size checked arrays are only supported for Structured ' 'arrays',
                 )
             elif issubclass(header, StaticHeader):
-
-                @specialized(cls, header, array_type)
-                class _array1(_format_array):
-                    count: ClassVar[int] = header._count
-                    obj_type: ClassVar[type[format_type]] = array_type
-
-                return Annotated[list[U], _array1]
+                # Static size
+                serializer = _format_array(header._count, array_type)
             else:
-                count = get_type_hints(header)['count']
-
-                @specialized(cls, header, array_type)
-                class _array2(_dynamic_format_array):
-                    count_type: ClassVar[type[SizeTypes]] = count
-                    obj_type: ClassVar[type[format_type]] = array_type
-
-                return Annotated[list[U], _array2]
+                # Dynamic Size
+                count = get_type_hints(header, include_extras=True)['count']
+                count = unwrap_annotated(count)
+                serializer = _dynamic_format_array(count, array_type)
+            return Annotated[list[U], serializer]
+        elif isinstance(array_type, type) and issubclass(array_type, Structured):
+            return Annotated[list[U], _structured_array(header(0, 0), array_type)]
         else:
-
-            @specialized(cls, header, array_type)
-            class _array3(_structured_array):
-                header_type: ClassVar[type[Header]] = header
-                obj_type: ClassVar[type[Structured]] = array_type
-
-            return Annotated[list[U], _array3]
+            raise TypeError(
+                'array object type must be a Structured class or formatted type.'
+            )
 
 
 class _structured_array(Serializer):
@@ -197,12 +174,18 @@ class _structured_array(Serializer):
     Subclass and set header_type and obj_type to create an array implementation.
     """
 
-    header_type: ClassVar[type[Header]]
-    obj_type: ClassVar[type[Structured]]
+    num_values: ClassVar[int] = 1
+    header: Header
+    obj_type: type[Structured]
 
-    def __init__(self, byte_order: ByteOrder):
+    def __init__(self, header: Header, obj_type: type[Structured]) -> None:
         """Setup the array header."""
-        self.header = self.header_type(0, 0)
+        self.header = header
+        self.obj_type = obj_type
+
+    def with_byte_order(self, byte_order: ByteOrder) -> _structured_array:
+        # TODO: with_byte_order for Structured classes.
+        return _structured_array(self.header.with_byte_order(byte_order), self.obj_type)
 
     def pack(self, *values: Any) -> bytes:
         """Pack an array into bytes."""
@@ -294,21 +277,16 @@ class _format_array(Serializer):
     :type obj_type: type[format_type]
     """
 
-    count: ClassVar[int]
-    obj_type: ClassVar[type[format_type]]
-
+    _serializer: StructSerializer
+    num_values: ClassVar[int] = 1
     size: int
 
-    def __init__(self, byte_order: ByteOrder):
-        """Create the packer/unpacker for the array, and set the static size
-        needed for this serializer.
+    def __init__(self, count: int, obj_serializer: StructSerializer):
+        self._serializer = obj_serializer * count
+        self.size = self._serializer.size
 
-        :param byte_order: Byte order to use when packing/unpacking.
-        """
-        actions = tuple(repeat(self.obj_type.unpack_action, self.count))
-        fmt = f'{byte_order.value}{self.count}{self.obj_type.format}'
-        self.serializer = struct_cache(fmt, actions)
-        self.size = self.serializer.size
+    def with_byte_order(self, byte_order: ByteOrder) -> Serializer:
+        return _format_array(1, self._serializer.with_byte_order(byte_order))
 
     def _check_arr(self, values: tuple[list]) -> list:
         """Extract the array from values, and verify it is of the correct
@@ -320,8 +298,8 @@ class _format_array(Serializer):
         :return: The array to pack
         """
         arr = values[0]
-        if (count := len(arr)) != self.count:
-            raise ValueError(f'array length must be {self.count} to pack, got {count}')
+        if (count := len(arr)) != (expected := self._serializer.num_values):
+            raise ValueError(f'array length must be {expected} to pack, got {count}')
         return arr
 
     def pack(self, *values: Any) -> bytes:
@@ -329,7 +307,7 @@ class _format_array(Serializer):
 
         :return: The packed array.
         """
-        return self.serializer.pack(*self._check_arr(values))
+        return self._serializer.pack(*self._check_arr(values))
 
     def pack_into(
         self,
@@ -343,7 +321,7 @@ class _format_array(Serializer):
         :param buffer: The buffer to place the packed array into
         :param offset: Location in the buffer to place the packed array
         """
-        self.serializer.pack_into(buffer, offset, *self._check_arr(values))
+        self._serializer.pack_into(buffer, offset, *self._check_arr(values))
 
     def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack an array of the appropriate size and write it to a file-like
@@ -351,7 +329,7 @@ class _format_array(Serializer):
 
         :param writable: A writable file-like object.
         """
-        self.serializer.pack_write(writable, *self._check_arr(values))
+        self._serializer.pack_write(writable, *self._check_arr(values))
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         """Unpack an array from a buffer.
@@ -359,7 +337,7 @@ class _format_array(Serializer):
         :param buffer: A bytes-like object to unpack from
         :return: The unpacked array as the single element of a tuple
         """
-        return (list(self.serializer.unpack(buffer[: self.size])),)
+        return (list(self._serializer.unpack(buffer)),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         """Unpack an array from a buffer supporting the Buffer Protocol.
@@ -368,7 +346,7 @@ class _format_array(Serializer):
         :param offset: Location in the buffer to unpack from
         :return: The unpacked array as the single element of a tuple
         """
-        return (list(self.serializer.unpack_from(buffer, offset)),)
+        return (list(self._serializer.unpack_from(buffer, offset)),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack an array from a readable object.
@@ -376,7 +354,7 @@ class _format_array(Serializer):
         :param readable: The readable file-like object to unpack from
         :return: The unpacked array as the single element of a tuple
         """
-        return (list(self.serializer.unpack_read(readable)),)
+        return (list(self._serializer.unpack_read(readable)),)
 
 
 class _dynamic_format_array(Serializer):
@@ -390,26 +368,33 @@ class _dynamic_format_array(Serializer):
     :type obj_type: type[format_type]
     """
 
-    count_type: ClassVar[type[SizeTypes]]
-    obj_type: ClassVar[type[format_type]]
+    _count_serializer: StructSerializer
+    _obj_serializer: StructSerializer
 
+    num_values: ClassVar[int] = 1
     size: int
 
-    def __init__(self, byte_order: ByteOrder) -> None:
+    def __init__(
+        self, count_serializer: StructSerializer, obj_serializer: StructSerializer
+    ) -> None:
         """Set up a struct object for packing/unpacking the array length, and
         initialize this Serializer's dynamic size.
 
         :param byte_order: ByteOrder to use for packing/unpacking
         """
         self.size = 0
-        fmt = f'{byte_order.value}{self.count_type.format}'
-        self.header = struct_cache(fmt)
-        self.byte_order = byte_order.value
+        self._count_serializer = count_serializer
+        self._obj_serializer = obj_serializer
 
-    def _arr_count_st(
+    def with_byte_order(self, byte_order: ByteOrder) -> _dynamic_format_array:
+        count_serializer = self._count_serializer.with_byte_order(byte_order)
+        obj_serializer = self._obj_serializer.with_byte_order(byte_order)
+        return _dynamic_format_array(count_serializer, obj_serializer)
+
+    def _arr_st(
         self,
         values: tuple[Any, ...],
-    ) -> tuple[list, int, StructSerializer]:
+    ) -> tuple[list, StructSerializer]:
         """Extract the array to pack, determine its size, and create a
         StructSerializer for packing the array along with its length.
 
@@ -418,21 +403,21 @@ class _dynamic_format_array(Serializer):
         """
         arr = values[0]
         count = len(arr)
-        fmt = (
-            f'{self.byte_order}{self.count_type.format}{count}'
-            f'{self.obj_type.format}'
-        )
-        st = struct_cache(fmt)
+        st = self._count_serializer + (self._obj_serializer * count)
+        # Hack: st.num_values is purely used internally to count the number of
+        # elements in the list, we -1 to adjust for the length value at the
+        # beginning.
+        st.num_values -= 1
         self.size = st.size
-        return arr, count, st
+        return arr, st
 
     def pack(self, *values: Any) -> bytes:
         """Pack an array into bytes.
 
         :return: The packed array.
         """
-        arr, count, st = self._arr_count_st(values)
-        return st.pack(count, *arr)
+        arr, st = self._arr_st(values)
+        return st.pack(st.num_values, *arr)
 
     def pack_into(
         self,
@@ -445,26 +430,16 @@ class _dynamic_format_array(Serializer):
         :param buffer: The buffer supporing the Buffer Protocol.
         :param offset: Location in the buffer to place the packed array.
         """
-        arr, count, st = self._arr_count_st(values)
-        st.pack_into(buffer, offset, count, *arr)
+        arr, st = self._arr_st(values)
+        st.pack_into(buffer, offset, st.num_values, *arr)
 
     def pack_write(self, writable: BinaryIO, *values: Any) -> None:
         """Pack an array and write it to a file-like object.
 
         :param writable: A writable file-like object.
         """
-        arr, count, st = self._arr_count_st(values)
-        st.pack_write(writable, count, *arr)
-
-    def _st(self, count: int) -> StructSerializer:
-        """Create a StructSerializer for unpacking a specified number of items.
-
-        :param count: The number of elements to unpack in the array.
-        :return: The StructSerializer for unpacking.
-        """
-        actions = tuple(repeat(self.count_type.unpack_action, count))
-        fmt = f'{self.byte_order}{count}{self.obj_type.format}'
-        return struct_cache(fmt, actions)
+        arr, st = self._arr_st(values)
+        st.pack_write(writable, st.num_values, *arr)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple:
         """Unpack an array from a bytes-like buffer.
@@ -472,9 +447,9 @@ class _dynamic_format_array(Serializer):
         :param buffer: The buffer to unpack from.
         :return: The array contained as a single element in a tuple
         """
-        count = self.header.unpack(buffer)[0]
-        st = self._st(count)
-        return (list(st.unpack(buffer[self.header.size :])),)
+        count: int = self._count_serializer.unpack(buffer)[0]
+        st = self._obj_serializer * count
+        return (list(st.unpack(buffer[self._count_serializer.size :])),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple:
         """Unpack an array from a buffer supporting the Buffer Protocol.
@@ -483,9 +458,9 @@ class _dynamic_format_array(Serializer):
         :param offset: Location in the buffer to draw data from.
         :return: The unpacked array contained as a single element in a tuple.
         """
-        count = self.header.unpack_from(buffer, offset)[0]
-        st = self._st(count)
-        return (list(st.unpack_from(buffer, offset + self.header.size)),)
+        count: int = self._count_serializer.unpack_from(buffer, offset)[0]
+        st = self._obj_serializer * count
+        return (list(st.unpack_from(buffer, offset + self._count_serializer.size)),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple:
         """Unpack an array from a readable file-like object.
@@ -493,6 +468,6 @@ class _dynamic_format_array(Serializer):
         :param readable: A readable file-like object.
         :return: The unpacked array contained as a single element in a tuple.
         """
-        count = self.header.unpack_read(readable)[0]
-        st = self._st(count)
+        count: int = self._count_serializer.unpack_read(readable)[0]
+        st = self._obj_serializer * count
         return (list(st.unpack_read(readable)),)

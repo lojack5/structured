@@ -5,9 +5,7 @@ import struct
 
 import pytest
 
-import structured
 from structured import *
-from structured.base_types import structured_type
 
 
 class TestStructured:
@@ -56,7 +54,7 @@ class TestStructured:
     def test_types(self) -> None:
         class Base(Structured):
             _: pad[2]
-            __: pad
+            __: pad[1]
             a: int8
             A: uint8
             b: int16
@@ -69,9 +67,9 @@ class TestStructured:
             f: float32
             g: float64
             h: char[2]
-            i: char
+            i: char[1]
             j: pascal[2]
-            k: pascal
+            k: pascal[1]
             l: bool8
 
             other_member: int
@@ -153,7 +151,7 @@ class TestStructured:
 
     def test_unpack_read(self) -> None:
         class Base(Structured):
-            a: int  = serialized(int8)
+            a: int8
         b = Base(42)
         data = b.pack()
         with io.BytesIO(data) as stream:
@@ -237,13 +235,12 @@ class TestStructured:
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.
-    # Linter ignores due to 'fold_overlaps' not being in __all__
-    assert structured.fold_overlaps('b', '') == 'b'          # type: ignore
-    assert structured.fold_overlaps('4sI', 'I') == '4s2I'    # type: ignore
-    assert structured.fold_overlaps('', 'b') == 'b'          # type: ignore
-
-
-class rogue_type(structured_type): pass
+    serializer = StructSerializer('b') + StructSerializer('')
+    assert serializer.format == 'b'
+    serializer = StructSerializer('4sI') + StructSerializer('I')
+    assert serializer.format == '4s2I'
+    serializer = StructSerializer('') + StructSerializer('b')
+    assert serializer.format == 'b'
 
 
 def test_create_serializers() -> None:
@@ -251,6 +248,3 @@ def test_create_serializers() -> None:
     with pytest.raises(TypeError):
         class Error(Structured):
             a: array
-    with pytest.raises(TypeError):
-        class Error2(Structured):
-            a: rogue_type

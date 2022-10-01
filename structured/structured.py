@@ -2,42 +2,30 @@ from __future__ import annotations
 
 __all__ = [
     'Structured',
-    'ByteOrder',
-    'ByteOrderMode',
     'serialized',
-    'create_serializer',
 ]
 
 import operator
-import re
-from functools import reduce, cache
+from functools import cache, reduce
 
-from .utils import StructuredAlias
-
-from .base_types import (
-    format_type,
+from .base_types import ByteOrder, ByteOrderMode, requires_indexing
+from .basic_types import ispad, unwrap_annotated
+from .serializers import (
+    NullSerializer,
     Serializer,
-    requires_indexing,
-    structured_type,
-    ByteOrder,
-    ByteOrderMode,
     StructSerializer,
-    struct_cache,
-    CompoundSerializer,
+    future_requires_indexing,
 )
-from .basic_types import pad, unwrap_annotated
 from .type_checking import (
     Any,
+    BinaryIO,
     ClassVar,
     Generic,
     Optional,
     ReadableBuffer,
-    BinaryIO,
+    Self,
     TypeGuard,
-    TypeVar,
-    Union,
     WritableBuffer,
-    cast,
     get_annotations,
     get_args,
     get_origin,
@@ -45,13 +33,10 @@ from .type_checking import (
     isclassvar,
     update_annotations,
 )
-from .utils import deprecated
+from .utils import StructuredAlias, deprecated, warn_deprecated
 
 
-_Annotation = Union[format_type, Serializer]
-
-
-def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
+def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
     """Filter to weed out only annotations which Structured uses to generate
     its serializers.
 
@@ -64,11 +49,19 @@ def validate_typehint(attr_type: type) -> TypeGuard[type[_Annotation]]:
     if isinstance(attr_type, type):
         if issubclass(attr_type, requires_indexing):
             raise TypeError(f'{attr_type.__qualname__} must be specialized')
-        if issubclass(attr_type, structured_type):
-            if issubclass(attr_type, (format_type, Serializer)):
-                return True
-            else:
-                raise TypeError(f'Unknown structured type {attr_type.__qualname__}')
+        if issubclass(attr_type, (Serializer, Structured)):
+            return True
+        if issubclass(attr_type, future_requires_indexing):
+            warn_deprecated(
+                attr_type,
+                '2.2',
+                '3.0',
+                issue=0,
+                use_instead=f'Use explicit length: {attr_type.__name__}[1]',
+            )
+            return True
+    elif isinstance(attr_type, Serializer):
+        return True
     return False
 
 
@@ -86,7 +79,7 @@ def serialized(kind: Any) -> Any:
 def filter_typehints(
     typehints: dict[str, Any],
     classdict: dict[str, Any],
-) -> dict[str, type[_Annotation]]:
+) -> dict[str, Serializer]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
@@ -107,144 +100,14 @@ def filter_typehints(
         if validate_typehint((unwrapped := unwrap_annotated(attr_type))):
             filtered[attr] = unwrapped
             # del classdict[attr]
+    # TODO: version 3.* remove this backwards compatibility for pad, char, pascal
+    for attr in filtered:
+        attr_type = filtered[attr]
+        if isinstance(attr_type, type) and issubclass(
+            attr_type, future_requires_indexing
+        ):
+            filtered[attr] = attr_type.serializer
     return filtered
-
-
-def split_typehints(
-    typehints: dict[str, type[_Annotation]],
-) -> list[dict[str, type[_Annotation]]]:
-    """Take a filtered typehints dictionary, and split it up into groups
-    corresponding to final serializers.  Attributes unpacked with a simple
-    struct format specifier are grouped together, and those that need a complex
-    Serializer are in their own group.  Order of the attributes is maintained,
-    so a chain of format types split by an array will result in three groups.
-
-    :param typehints: Filtered typehints obtained from `filter_typehints`.
-    :return: A list of typehints dictionary, split across Serializer boundaries.
-    """
-    split: list[dict[str, type[_Annotation]]] = []
-
-    current_group = {}
-
-    def finalize_group():
-        nonlocal current_group
-        if current_group:
-            split.append(current_group)
-            current_group = {}
-
-    for attr, attr_type in typehints.items():
-        if issubclass(attr_type, format_type):
-            current_group[attr] = attr_type
-        else:  # Serializer
-            finalize_group()
-            split.append({attr: attr_type})
-    finalize_group()
-    return split
-
-
-def create_struct(
-    typehints: dict[str, type[format_type]],
-    byte_order: ByteOrder,
-) -> tuple[StructSerializer, tuple[str, ...]]:
-    """Create a StructSerializer for a group of attributes.  Such a group is
-    obtained via `split_typhints`, and requires a group of attributes that uses
-    only basic struct format specifiers.  This also returns the resulting
-    attribute names which correspond to unpacked values.  NOTE: This is not the
-    same as the keys of the passed dictionary, due to pad variables.
-
-    :param typehints: A typehints group of basic struct format specifiers.
-    :param byte_order: Which ByteOrder to use for this StructSerializer.
-    :return: The generated StructSerializer, and attribute names.
-    """
-    fmt = reduce(fold_overlaps, (var_type.format for var_type in typehints.values()))
-    attr_actions = {
-        attr: attr_type.unpack_action
-        for attr, attr_type in typehints.items()
-        if not issubclass(attr_type, pad)
-    }
-    attrs = tuple(attr_actions.keys())
-    actions = tuple(attr_actions.values())
-    st = struct_cache(byte_order.value + fmt, actions)
-    return st, attrs
-
-
-def create_serializer(
-    typehints: dict[str, Any],
-    byte_order: ByteOrder = ByteOrder.DEFAULT,
-    classdict: Optional[dict[str, Any]] = None,
-) -> tuple[Serializer, tuple[str, ...]]:
-    """Create a Serializer appropriate for packing/unpacking attributes.
-    Attributes are matched first by searching through `typhints` for names with
-    applicable Structured types.  Optionally (used internally for class
-    creation), a class dictionary can be passed as well, overriding hints from
-    the typhints dictionary.
-
-    :param typehints: Mapping of attribute names to types.
-    :param byte_order: Byte order to be used when unpacking/packing.
-    :param classdict: Optional second mapping of attribute names to types.
-    :return: A Serializer instance to use for packing/unpacking the matching
-        attributes, along with said attributes in the order they will be
-        serialized.
-    """
-    classdict = classdict if classdict is not None else {}
-    applicable_hints = filter_typehints(typehints, classdict)
-    hint_groups = split_typehints(applicable_hints)
-    all_attrs: list[str] = []
-    # First, generate struct.Struct objects where necessary
-    serializers = {}
-    for group in hint_groups:
-        first_type = next(iter(group.values()))
-        slice_start = len(all_attrs)
-        if issubclass(first_type, format_type):
-            # needs to be handled with a struct.Struct instance
-            group = cast(dict[str, type[format_type]], group)
-            serializer, attrs = create_struct(group, byte_order)
-            slice_stop = slice_start + len(attrs)
-            all_attrs.extend(attrs)
-        else:
-            # A custom serializer is being used
-            serializer_type = next(iter(group.values()))
-            serializer_type = cast(type[Serializer], serializer_type)
-            all_attrs.append(next(iter(group.keys())))
-            serializer = serializer_type(byte_order)
-            slice_stop = slice_start + 1
-        serializers[serializer] = slice(slice_start, slice_stop)
-    # Check if we need a compound serializer:
-    if len(serializers) == 1:
-        serializer = next(iter(serializers.keys()))
-    else:
-        serializer = CompoundSerializer(serializers)
-    return serializer, tuple(all_attrs)
-
-
-_reOverlap: re.Pattern[str] = re.compile(r'(.*?)(\d+)\D$')
-
-
-def fold_overlaps(format1: str, format2: str) -> str:
-    """Combines two format strings into one, combining common types into counted
-    versions, i.e.: 'h' + 'h' -> '2h'.  The format strings must not contain
-    byte order specifiers.
-
-    :param format1: First format string to combine, may be empty.
-    :param format2: Second format string to combine, may be empty.
-    :return: The combined format string.
-    """
-    if not format1:
-        return format2
-    elif not format2:
-        return format1
-    if (overlap := format1[-1]) == format2[0] and overlap not in ('s', 'p'):
-        if match := _reOverlap.match(format1):
-            prelude, count = match.groups()
-            count = int(count)
-        else:
-            prelude = format1[:-1]
-            count = 1
-        count += 1
-        format = f'{prelude}{count}{overlap}{format2[1:]}'
-    else:
-        format = format1 + format2
-    return format
 
 
 def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
@@ -272,15 +135,12 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
         return None
 
 
-_C = TypeVar('_C', bound='Structured')
-
-
 class Structured:
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
 
     __slots__ = ()
-    serializer: ClassVar[Serializer] = struct_cache('')
+    serializer: ClassVar[Serializer] = StructSerializer('', 0)
     attrs: ClassVar[tuple[str, ...]] = ()
     byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
 
@@ -309,6 +169,16 @@ class Structured:
 
         for attr, value in attrs_values.items():
             setattr(self, attr, value)
+
+    def with_byte_order(self, byte_order: ByteOrder) -> Self:
+        if byte_order == self.byte_order:
+            return self
+        serializer = self.serializer.with_byte_order(byte_order)
+        values = (getattr(self, attr) for attr in self.attrs)
+        new_obj = type(self)(*values)
+        new_obj.serializer = serializer
+        new_obj.byte_order = byte_order
+        return new_obj
 
     # General packers/unpackers
     def unpack(self, buffer: ReadableBuffer) -> None:
@@ -366,7 +236,7 @@ class Structured:
 
     # Creation of objects from unpackable types
     @classmethod
-    def create_unpack(cls: type[_C], buffer: ReadableBuffer) -> _C:
+    def create_unpack(cls, buffer: ReadableBuffer) -> Self:
         """Create a new instance, initialized with values unpacked from a
         bytes-like buffer.
 
@@ -376,9 +246,7 @@ class Structured:
         return cls(*cls.serializer.unpack(buffer))
 
     @classmethod
-    def create_unpack_from(
-        cls: type[_C], buffer: ReadableBuffer, offset: int = 0
-    ) -> _C:
+    def create_unpack_from(cls, buffer: ReadableBuffer, offset: int = 0) -> Self:
         """Create a new instance, initialized with values unpacked from a buffer
         supporting the Buffer Protocol.
 
@@ -389,7 +257,7 @@ class Structured:
         return cls(*cls.serializer.unpack_from(buffer, offset))
 
     @classmethod
-    def create_unpack_read(cls: type[_C], readable: BinaryIO) -> _C:
+    def create_unpack_read(cls, readable: BinaryIO) -> Self:
         """Create a new instance, initialized with values unpacked from a
         readable file-like object.
 
@@ -428,8 +296,16 @@ class Structured:
         # already, so the most expensive part is the get_type_hints part.  But
         # this method is cached too, so just go as is?
         items = get_type_hints(cls, include_extras=True).items()
-        hints = {attr: attr_type for attr, attr_type in items if attr in attrs}
-        return create_serializer(hints, cls.byte_order)
+        hints = {
+            attr: unwrap_annotated(attr_type)
+            for attr, attr_type in items
+            if attr in attrs
+        }
+        serializer = sum(hints.values(), NullSerializer()).with_byte_order(
+            cls.byte_order
+        )
+        attrs = tuple(hints.keys())
+        return serializer, attrs
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
@@ -491,7 +367,15 @@ class Structured:
                 classdict = dict(classdict) | clsdict
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
-        serializer, attrs = create_serializer(typehints, byte_order, classdict)
+        applicable_typehints = filter_typehints(typehints, classdict)
+        serializer = sum(
+            applicable_typehints.values(), NullSerializer()
+        ).with_byte_order(byte_order)
+        attrs = tuple(
+            attr
+            for attr, attr_type in applicable_typehints.items()
+            if not ispad(attr_type)
+        )
         # And set the updated class attributes
         cls.serializer = serializer
         cls.attrs = attrs

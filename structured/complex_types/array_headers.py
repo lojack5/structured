@@ -7,16 +7,14 @@ from __future__ import annotations
 
 from functools import cache
 
-from ..basic_types import _uint8, _uint16, _uint32, _uint64, unwrap_annotated
+from ..basic_types import uint8, uint16, uint32, uint64
 from ..structured import Structured
-from ..type_checking import ClassVar, Generic, Optional, TypeVar, Union
+from ..type_checking import ClassVar, Generic, Optional, TypeVar, Union, cast
 from ..utils import StructuredAlias, specialized
 
-
-_SizeTypes = (_uint8, _uint16, _uint32, _uint64)
-SizeTypes = Union[_uint8, _uint16, _uint32, _uint64]
-TSize = TypeVar('TSize', bound=SizeTypes)
-TCount = TypeVar('TCount', bound=SizeTypes)
+TCount = TypeVar('TCount', uint8, uint16, uint32, uint64)
+TSize = TypeVar('TSize', uint8, uint16, uint32, uint64)
+_SizeTypes = (uint8, uint16, uint32, uint64)
 
 
 class HeaderBase:
@@ -84,7 +82,7 @@ class DynamicHeader(Generic[TCount], Structured, HeaderBase):
         self.count = count  # type: ignore
 
     @classmethod
-    def specialize(cls, count_type: type[SizeTypes]) -> type[DynamicHeader]:
+    def specialize(cls, count_type: type[TCount]) -> type[DynamicHeader]:
         class _DynamicHeader(DynamicHeader[count_type]):
             pass
 
@@ -129,7 +127,7 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
     def specialize(
         cls,
         count: int,
-        size_type: type[SizeTypes],
+        size_type: type[TSize],
     ) -> type[StaticCheckedHeader]:
         """Specialize for the specific static size and check type.
 
@@ -165,7 +163,7 @@ class DynamicCheckedHeader(Generic[TCount, TSize], Structured, HeaderBase):
 
     @classmethod
     def specialize(
-        cls, count_type: type[SizeTypes], size_type: type[SizeTypes]
+        cls, count_type: type[TSize], size_type: type[TSize]
     ) -> type[DynamicCheckedHeader]:
         """Specialize for the specific count type and check type.
 
@@ -195,7 +193,7 @@ class Header(Structured, HeaderBase):
         """
         if not isinstance(key, tuple):
             key = (key,)
-        return cls.create(*map(unwrap_annotated, key))
+        return cls.create(*key)
 
     @classmethod
     def create(cls, count, size_check=None):
@@ -207,7 +205,7 @@ class Header(Structured, HeaderBase):
     @classmethod
     @cache
     def _create(
-        cls, count: Union[int, type[SizeTypes]], size_check: Optional[type[SizeTypes]]
+        cls, count: Union[int, type[TSize]], size_check: Optional[type[TSize]]
     ) -> type[Header]:
         """Check header arguments and dispatch to the correct Header
         specialization.
@@ -221,14 +219,10 @@ class Header(Structured, HeaderBase):
         if isinstance(count, TypeVar) or isinstance(size_check, TypeVar):
             return StructuredAlias(cls, (count, size_check))  # type: ignore
         # Final type checking
-        if size_check is not None:
-            if not (
-                isinstance(size_check, type) and issubclass(size_check, _SizeTypes)
-            ):
-                raise TypeError('size check must be a uint* type.')
-        elif not isinstance(count, int):
-            if not (isinstance(count, type) and issubclass(count, _SizeTypes)):
-                raise TypeError('array length must be an integer or uint* type.')
+        if size_check is not None and size_check not in _SizeTypes:
+            raise TypeError('size check must be a uint* type.')
+        elif not isinstance(count, int) and count not in _SizeTypes:
+            raise TypeError('array length must be an integer or uint* type.')
         # Dispatch
         if size_check is None:
             args = (count,)
@@ -242,4 +236,4 @@ class Header(Structured, HeaderBase):
                 header = StaticCheckedHeader.specialize(count, size_check)
             else:
                 header = DynamicCheckedHeader.specialize(count, size_check)
-        return specialized(cls, *args)(header)  # type: ignore
+        return specialized(cls, *args)(cast(type[Header], header))

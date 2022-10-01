@@ -3,10 +3,12 @@ import typing
 from typing import (
     Annotated,
     Any,
+    BinaryIO,
     Callable,
     ClassVar,
     Container,
     Generic,
+    Iterable,
     NoReturn,
     Optional,
     TypeVar,
@@ -15,13 +17,17 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
-    BinaryIO,
 )
 
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec, TypeAlias, TypeGuard
 else:
     from typing import ParamSpec, TypeAlias, TypeGuard
+
+if sys.version_info < (3, 11):
+    from typing_extensions import Self
+else:
+    from typing import Self
 
 
 _T = TypeVar('_T')

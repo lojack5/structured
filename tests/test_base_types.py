@@ -1,9 +1,11 @@
 import io
+import struct
 
 import pytest
 
 from structured import *
 from structured.basic_types import unwrap_annotated
+from structured.serializers import noop_action
 
 
 ## Only tests needed for lines not tested by Structured tests
@@ -11,8 +13,9 @@ from structured.basic_types import unwrap_annotated
 
 def test_counted() -> None:
     cls = unwrap_annotated(pad[2])
+    assert isinstance(cls, StructSerializer)
     assert cls.format == '2x'
-    assert cls.__qualname__ == 'pad[2]'
+    assert cls.num_values == 0
 
     with pytest.raises(TypeError):
         pad['']
@@ -42,8 +45,10 @@ class TestFormatted:
                 else:
                     return self._value == other
 
-        assert MutableType[int16].format == 'h'
-        assert MutableType[int16].unpack_action is MutableType[int16]
+        serializer = unwrap_annotated(MutableType[int16])
+        assert isinstance(serializer, StructActionSerializer)
+        assert serializer.format == 'h'
+        assert serializer.actions == (MutableType,)
 
         class Base(Structured):
             a: MutableType[int16]
@@ -55,7 +60,6 @@ class TestFormatted:
         assert target_obj.pack() == target_data
         b = Base.create_unpack(target_data)
         assert isinstance(b.a, MutableType)
-        assert type(b.a) is MutableType[int16]
         assert b == target_obj
         assert b.a == 11
 
@@ -74,18 +78,22 @@ class TestFormatted:
                 return cls(None, value)
 
             def __eq__(self, other):
-                if isinstance(other, type(self)):
+                if isinstance(other, MutableType):
                     return self._wrapped == other._wrapped
                 else:
                     return self._wrapped == other
+
         MutableType.unpack_action = MutableType.from_int
         class Base(Structured):
             a: MutableType[int8]
             b: int8
-        target_obj = Base(MutableType[int8](None, 42), 10)
-
         assert isinstance(Base.serializer, StructActionSerializer)
-        target_data = Base.serializer.pack(42, 10)
+        assert Base.serializer.actions == (MutableType.from_int, noop_action)
+        assert Base.serializer.format == '2b'
+        assert Base.serializer.num_values == 2
+
+        target_obj = Base(MutableType[int8](None, 42), 10)
+        target_data = struct.pack('2b', 42, 10)
 
         assert target_obj.pack() == target_data
         assert Base.create_unpack(target_data) == target_obj
@@ -104,8 +112,10 @@ class TestFormatted:
     def test_subclassing_specialized(self) -> None:
         class MutableType(Formatted):
             _types = frozenset({int8, int16})
-        assert MutableType[int8].format == 'b'
-        assert MutableType[int8].unpack_action is MutableType[int8]
+        serializer = unwrap_annotated(MutableType[int8])
+        assert isinstance(serializer, StructActionSerializer)
+        assert serializer.format == 'b'
+        assert serializer.actions == (MutableType, )
 
     def test_errors(self) -> None:
         class Error1(Formatted):

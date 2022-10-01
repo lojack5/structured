@@ -4,15 +4,7 @@ Various utility methods.
 import warnings
 from functools import wraps
 
-from .type_checking import (
-    _T,
-    Any,
-    Callable,
-    NoReturn,
-    Optional,
-    ParamSpec,
-    TypeVar,
-)
+from .type_checking import _T, Any, Callable, NoReturn, Optional, ParamSpec, TypeVar
 
 
 @classmethod

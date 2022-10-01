@@ -1,2 +1,2 @@
-from .arrays import array, Header
-from .strings import char, unicode, null_char, null_unicode, NET, EncoderDecoder
+from .arrays import Header, array
+from .strings import NET, EncoderDecoder, char, null_char, null_unicode, unicode
