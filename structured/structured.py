@@ -32,6 +32,7 @@ from .type_checking import (
     get_type_hints,
     isclassvar,
     update_annotations,
+    dataclass_transform,
 )
 from .utils import StructuredAlias, deprecated, warn_deprecated
 
@@ -135,6 +136,7 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
         return None
 
 
+@dataclass_transform()
 class Structured:
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
