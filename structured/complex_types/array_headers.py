@@ -35,7 +35,7 @@ class HeaderBase:
         """
 
 
-class StaticHeader(HeaderBase, Structured):
+class StaticHeader(HeaderBase, Structured, init=False):
     """StaticHeader representing a statically sized array."""
 
     # NOTE: HeaderBase first, to get it's __init__
@@ -62,13 +62,13 @@ class StaticHeader(HeaderBase, Structured):
         if count <= 0:
             raise ValueError('count must be positive')
 
-        class _StaticHeader(StaticHeader):
+        class _StaticHeader(StaticHeader, init=False):
             _count: ClassVar[int] = count
 
         return _StaticHeader
 
 
-class DynamicHeader(Generic[TCount], Structured, HeaderBase):
+class DynamicHeader(Generic[TCount], Structured, HeaderBase, init=False):
     """Base for dynamically sized arrays, where the array length is just prior
     to the array data.
     """
@@ -83,13 +83,13 @@ class DynamicHeader(Generic[TCount], Structured, HeaderBase):
 
     @classmethod
     def specialize(cls, count_type: type[TCount]) -> type[DynamicHeader]:
-        class _DynamicHeader(DynamicHeader[count_type]):
+        class _DynamicHeader(DynamicHeader[count_type], init=False):
             pass
 
         return _DynamicHeader
 
 
-class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
+class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase, init=False):
     """Statically sized array, with a size check int packed just prior to the
     array data.
     """
@@ -138,7 +138,7 @@ class StaticCheckedHeader(Generic[TSize], Structured, HeaderBase):
         if count <= 0:
             raise ValueError('count must be positive')
 
-        class _StaticCheckedHeader(StaticCheckedHeader[size_type]):
+        class _StaticCheckedHeader(StaticCheckedHeader[size_type], init=False):
             _count: ClassVar[int] = count
 
         return _StaticCheckedHeader

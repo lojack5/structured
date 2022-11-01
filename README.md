@@ -292,3 +292,36 @@ assert hasattr(obj.items[0], 'a')
 
 > AssertionError
 ```
+
+
+## Dataclass compatibility
+For the most part, `Structured` should be compatible with the `@dataclass`
+decorator.  To suppress the generated `__init__` method and use `@dataclass`s
+instead, pass `init=False` to the subclassing machinery.
+
+NOTE: The unpacking logic requires your class's `__init__` to accept at least
+all of the unpacked fields in order as arguments, so if you want to write your
+own or use `@dataclass`s, make sure to mark other types as non-initialization
+variables (with `= field(init=False)`).  You can further initialize those
+variables in a `__post_init__` method.
+
+Here's an example of mixing both `structured` types and other types, as well as
+using `@dataclass`s generated `__init__`:
+
+```python
+@dataclass
+class MyStruct(Structured, init=False):
+  a: int8
+  b: int = field(init=False)
+  _: pad[1] = field(init=False)
+  c: uint16
+
+  def __post_init__(self) -> None:
+    self.b = 0
+
+data = struct.pack('bH', 1, 42)
+a = MyStruct.create_unpack(data)
+print(a)
+
+> MyStruct(a=1, c=42)
+```
