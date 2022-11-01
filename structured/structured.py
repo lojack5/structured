@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import sys
 
 __all__ = [
@@ -20,6 +21,7 @@ from .serializers import (
 from .type_checking import (
     Any,
     BinaryIO,
+    Callable,
     ClassVar,
     Generic,
     Optional,
@@ -33,8 +35,6 @@ from .type_checking import (
     get_type_hints,
     isclassvar,
     update_annotations,
-    dataclass_transform,
-    Callable,
 )
 from .utils import StructuredAlias, deprecated, warn_deprecated
 
@@ -138,7 +138,12 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
         return None
 
 
-def gen_init(args: dict[str, Any], *, globalsns: dict[str, Any] | None = None, localsns: dict[str, Any] | None = None) -> Callable:
+def gen_init(
+    args: dict[str, Any],
+    *,
+    globalsns: dict[str, Any] | None = None,
+    localsns: dict[str, Any] | None = None,
+) -> Callable:
     """Generates an __init__ method for a class.  `args` should be a mapping of
     arguments to type annotations to be used in the method definition.
 
@@ -151,7 +156,9 @@ def gen_init(args: dict[str, Any], *, globalsns: dict[str, Any] | None = None, l
         localsns = {}
     local_vars = ', '.join(localsns.keys())
     # Inner function text
-    args_txt = ', '.join(f'{name}: {annotation.__name__}' for name, annotation in args.items())
+    args_txt = ', '.join(
+        f'{name}: {annotation.__name__}' for name, annotation in args.items()
+    )
     def_txt = f' def __init__({args_txt}) -> None:'
     body_lines = [f'  self.{name} = {name}' for name in args.keys() if name != 'self']
     body_lines.append('  self.__post_init__()')
@@ -385,9 +392,10 @@ class Structured:
         # Need to ensure 'self' shows up first
         typehints = get_type_hints(cls)
         init_vars = {'self': Self}
-        init_vars |= {attr: typehints.get(attr, Any)
-                      for attr in applicable_typehints
-                      if not ispad(applicable_typehints[attr])
+        init_vars |= {
+            attr: typehints.get(attr, Any)
+            for attr in applicable_typehints
+            if not ispad(applicable_typehints[attr])
         }
         # But also don't want 'self' to show up in attrs
         attrs = tuple(init_vars.keys())[1:]
