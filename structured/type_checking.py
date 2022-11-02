@@ -25,9 +25,9 @@ else:
     from typing import ParamSpec, TypeAlias, TypeGuard
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Self
+    from typing_extensions import Self, dataclass_transform
 else:
-    from typing import Self
+    from typing import Self, dataclass_transform
 
 
 _T = TypeVar('_T')

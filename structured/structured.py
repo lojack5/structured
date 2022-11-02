@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 __all__ = [
     'Structured',
     'serialized',
@@ -19,6 +21,7 @@ from .serializers import (
 from .type_checking import (
     Any,
     BinaryIO,
+    Callable,
     ClassVar,
     Generic,
     Optional,
@@ -135,6 +138,41 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
         return None
 
 
+def gen_init(
+    args: dict[str, Any],
+    *,
+    globalsns: dict[str, Any] | None = None,
+    localsns: dict[str, Any] | None = None,
+) -> Callable:
+    """Generates an __init__ method for a class.  `args` should be a mapping of
+    arguments to type annotations to be used in the method definition.
+
+    :param args: Mapping of argument names to argument type annotations, including self.
+    :param globalsns: Any globals needed to be accessed by this method.
+    :param localsns: Any locals needed to be accessed by this method.
+    :return: The generated __init__, without __qualname__set.
+    """
+    if localsns is None:
+        localsns = {}
+    local_vars = ', '.join(localsns.keys())
+    # Inner function text
+    args_txt = ', '.join(
+        f'{name}: {annotation.__name__}' for name, annotation in args.items()
+    )
+    def_txt = f' def __init__({args_txt}) -> None:'
+    body_lines = [f'  self.{name} = {name}' for name in args.keys() if name != 'self']
+    body_lines.append('  self.__post_init__()')
+    body_txt = '\n'.join(body_lines)
+    inner_txt = f'{def_txt}\n{body_txt}'
+    # Outer creation function
+    txt = f'def __create_fn__({local_vars}):\n'
+    txt += f'{inner_txt}\n'
+    txt += ' return __init__'
+    namespace = {}
+    exec(txt, globalsns, namespace)
+    return namespace['__create_fn__'](**localsns)
+
+
 class Structured:
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
@@ -144,31 +182,10 @@ class Structured:
     attrs: ClassVar[tuple[str, ...]] = ()
     byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
 
-    def __init__(self, *args, **kwargs):
-        # TODO: Create the init function on the fly (ala dataclass) so we can
-        # leverage python's error checking for argument names, etc.
-        attrs_values = dict(zip(self.attrs, args))
-        given = len(args)
-        expected = len(self.attrs)
-        if given > expected:
-            raise TypeError(
-                f'{type(self).__qualname__}() takes {expected} positional '
-                f'arguments but {given} were given'
-            )
-        duplicates = set(attrs_values.keys()) & set(kwargs.keys())
-        if duplicates:
-            raise TypeError(
-                f'{duplicates} arguments passed as both positional and keyword.'
-            )
-        attrs_values |= kwargs
-        present = set(attrs_values.keys())
-        if missing := (attr_set := set(self.attrs)) - present:
-            raise TypeError(f'missing arguments {missing}')
-        elif extra := present - attr_set:
-            raise TypeError(f'unknown arguments for {extra}')
-
-        for attr, value in attrs_values.items():
-            setattr(self, attr, value)
+    def __post_init__(self) -> None:
+        """Initialize any instance variables not handled by the Structured
+        unpacking logic.
+        """
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
         if byte_order == self.byte_order:
@@ -323,6 +340,7 @@ class Structured:
         cls,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
         byte_order_mode: ByteOrderMode = ByteOrderMode.STRICT,
+        init: bool = True,
         **kwargs,
     ) -> None:
         """Subclassing a Structured type.  We need to compute new values for the
@@ -332,6 +350,8 @@ class Structured:
             Defaults to no byte order marker.
         :param byte_order_mode: Mode to use when resolving conflicts with super
             class's byte order.
+        :param init: Whether to generate an __init__ method for this class (for
+            example, set this to false if you wish to use @dataclass).
         :raises ValueError: If ByteOrder conflicts with the base class and is
             not specified as overridden.
         """
@@ -368,14 +388,30 @@ class Structured:
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
         applicable_typehints = filter_typehints(typehints, classdict)
+        # Which variables show up in the __init__
+        # Need to ensure 'self' shows up first
+        typehints = get_type_hints(cls)
+        init_vars = {'self': Self}
+        init_vars |= {
+            attr: typehints.get(attr, Any)
+            for attr in applicable_typehints
+            if not ispad(applicable_typehints[attr])
+        }
+        # But also don't want 'self' to show up in attrs
+        attrs = tuple(init_vars.keys())[1:]
         serializer = sum(
             applicable_typehints.values(), NullSerializer()
         ).with_byte_order(byte_order)
-        attrs = tuple(
-            attr
-            for attr, attr_type in applicable_typehints.items()
-            if not ispad(attr_type)
-        )
+        if init:
+            # Generate an init method
+            if cls.__module__ in sys.modules:
+                globals = sys.modules[cls.__module__].__dict__
+            else:
+                globals = {}
+
+            init_fn = gen_init(init_vars, globalsns=globals)
+            init_fn.__qualname__ = f'{cls.__qualname__}.__init__'
+            cls.__init__ = init_fn
         # And set the updated class attributes
         cls.serializer = serializer
         cls.attrs = attrs

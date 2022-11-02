@@ -501,7 +501,6 @@ class CompoundSerializer(Serializer):
         return CompoundSerializer(serializers)
 
     def __add__(self, other: Serializer) -> CompoundSerializer:
-        print('Adding', self, other)
         if isinstance(other, CompoundSerializer):
             to_append = list(other.serializers)
         elif isinstance(other, Serializer):
@@ -527,7 +526,6 @@ class CompoundSerializer(Serializer):
     def __radd__(self, other: Serializer) -> CompoundSerializer:
         # NOTE: CompountSerializer + CompoundSerializer will always call __add__
         # so we only need to optimize for Serializer + CompoundSerializer
-        print('rAdding', other, self)
         if isinstance(other, Serializer):
             serializers = [other]
         else:
