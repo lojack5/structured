@@ -3,8 +3,23 @@ Various utility methods.
 """
 import warnings
 from functools import wraps
+import operator
 
 from .type_checking import _T, Any, Callable, NoReturn, Optional, ParamSpec, TypeVar
+
+
+def attrgetter(*attr_names: str) -> Callable[[Any], tuple[Any, ...]]:
+    """Create an operator.attrgetter-like callable.  The differences are if no
+    attributes are specified, the callable returns and empty tuple, and a single
+    attribute supplied still returns the attribute in a tuple.
+    """
+    if not attr_names:
+        return lambda x: ()
+    _get = operator.attrgetter(*attr_names)
+    if len(attr_names) == 1:
+        return lambda x: (_get(x),)
+    else:
+        return _get
 
 
 @classmethod
