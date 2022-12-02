@@ -36,7 +36,7 @@ from .type_checking import (
     isclassvar,
     update_annotations,
 )
-from .utils import StructuredAlias, deprecated, warn_deprecated
+from .utils import StructuredAlias, deprecated, warn_deprecated, attrgetter
 
 
 def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
@@ -180,6 +180,7 @@ class Structured:
     __slots__ = ()
     serializer: ClassVar[Serializer] = StructSerializer('', 0)
     attrs: ClassVar[tuple[str, ...]] = ()
+    _attrgetter: Callable[[Structured], tuple[Any, ...]]
     byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
 
     def __post_init__(self) -> None:
@@ -191,8 +192,7 @@ class Structured:
         if byte_order == self.byte_order:
             return self
         serializer = self.serializer.with_byte_order(byte_order)
-        values = (getattr(self, attr) for attr in self.attrs)
-        new_obj = type(self)(*values)
+        new_obj = type(self)(*type(self)._attrgetter(self))
         new_obj.serializer = serializer
         new_obj.byte_order = byte_order
         return new_obj
@@ -228,7 +228,7 @@ class Structured:
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self.serializer.pack(*(getattr(self, attr) for attr in self.attrs))
+        return self.serializer.pack(*type(self)._attrgetter(self))
 
     def pack_write(self, writable: BinaryIO) -> None:
         """Pack the class's values according to the format string, then write
@@ -236,9 +236,7 @@ class Structured:
 
         :param writable: writable file-like object.
         """
-        self.serializer.pack_write(
-            writable, *(getattr(self, attr) for attr in self.attrs)
-        )
+        self.serializer.pack_write(writable, *type(self)._attrgetter(self))
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
@@ -247,9 +245,7 @@ class Structured:
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self.serializer.pack_into(
-            buffer, offset, *(getattr(self, attr) for attr in self.attrs)
-        )
+        self.serializer.pack_into(buffer, offset, *type(self)._attrgetter(self))
 
     # Creation of objects from unpackable types
     @classmethod
@@ -415,6 +411,7 @@ class Structured:
         # And set the updated class attributes
         cls.serializer = serializer
         cls.attrs = attrs
+        cls._attrgetter = attrgetter(*attrs)
         cls.byte_order = byte_order
 
     @classmethod
