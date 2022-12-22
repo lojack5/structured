@@ -23,7 +23,7 @@ Almost every format specifier in `struct` is supported as a type:
 | `struct` format | structured type | Python type | Notes |
 |:---------------:|:---------------:|-------------|:-----:|
 | `x`             | `pad`           |             |(1)(4) |
-| `c`             | `char`          | `bytes` with length 1 | |
+| `c`             | equivalent to `char[1]` | `bytes` with length 1 | |
 | `?`             | `bool8`         | `int`       |  (3)  |
 | `b`             | `int8`          | `int`       |       |
 | `B`             | `uint8`         | `int`       |       |
@@ -43,7 +43,7 @@ Almost every format specifier in `struct` is supported as a type:
 | `P`             | not supported   |             |       |
 
 Notes:
- 1. The default for this a single instance of this type.  For specifying longer sequences, use indexing to specify the length.
+ 1. These type must be indexed to specify their length.  For a single byte `char` for example (`'s'`), use `char[1]`.
  2. The 16-bit float type is not supported on all platforms.
  3. `struct` treats `bool` as an `int`, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
  4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.
@@ -76,10 +76,10 @@ Now `MyStruct` has a format of `'4s10x'`.
 
 
 ### Creating your own types for annotations
-Sometimes, the provided types are not enough.  Maybe you have a mutable type that encapsulates an integer.  To enable your type to work with `Structured` as a type annotation, you can derive from `Formatted`.  Your class will now support indexing to specify which format specifier to use to pack/unpack your class with.
+Sometimes, the provided types are not enough.  Maybe you have a mutable type that encapsulates an integer.  To enable your type to work with `Structured` as a type annotation, you can specify how it should be serialized by referencing one of the basic types.  A restriction here is that basic type must unpack as a single value (so for example, `pad` is not allowed). To communicate this information to `Structured`, use `typing.Annotated` and `structured.SerializeAs`:
 
 ```python
-class MyInt(Formatted):
+class MyInt:
   _wrapped: int
   def __init__(self, value: int) -> None:
     self._wrapped = value
@@ -88,45 +88,25 @@ class MyInt(Formatted):
     return self._wrapped
 
 class MyStruct(Structured):
-  version: MyInt[uint8]
+  version: Annotated[MyInt, SerializeAs(int32)]
 ```
 
-The format specifier for your custom type is determined by a `__class_getitem__` method, which allows you to index the class with one of the provided format types.  By default, all of the format types are allowed.  If you want to narrow the allowed types, you can set a class variable `_types` to a set of the allowed types.  The above example is supposed to represent an integer type, so lets modify it to only allow indexing the class with integer types:
+If you use your type a lot, you can use a `TypeAlias` to make things easier:
 
 ```python
-class MyInt(Formatted):
-  _types = {int8, int16, int32, int64, uint8, uint16, uint32, uint64}
-  _wrapped: int
+MyInt32: TypeAlias = Annotated[MyInt, SerializeAs(int32)]
 
-  def __init__(self, value: int) -> None:
-    self._wrapped = value
-
-  def __index__(self) -> int:
-    return self._wrapped
-```
-Now trying to index with a non-integer type will raise a `TypeError`:
-```python
-class MyError(Structured):
-  version: MyInt[float32]
-
->> TypeError
+class MyStruct(Structured):
+  version: MyInt32
 ```
 
-By default, a `Formatted` subclass uses the class's `__init__` to create new instances when unpacking.  If you need more flexibility, you can assign the class attribute `unpack_action` to a callable taking one argument (the result of the unpack) and returning the new instance:
+Finally, if you're missing some of the old functionality of `Formatted` (versions 2 of `structured`), you could write your own `__class_getitem__`:
 ```python
-class MyWeirdInt(Formatted):
-    def __init__(self, note: str, value: int):
-      self._note = note
-      self._value = value
+class MyInt:
+  ...
 
-    def __index__(self) -> int:
-      return self._value
-
-    @classmethod
-    def from_unpack(cls, value: int):
-      return cls('unpacked', value)
-
-    unpack_action = from_unpack
+  def __class_getitem__(cls, key) -> type[Self]:
+    return Annotated[cls, SerializeAs[key]]
 ```
 
 As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.  For `bytes` wrappers, unfortunately `struct` does not call `__bytes__` on the unerlying object.  Your options in that case are to base your class on `bytes` (forcing it to be immutable), or to write a `Serializer` for it.  You can take a look at `complex_types/strings.py` for some ideas on how to do that.
@@ -236,7 +216,7 @@ class MyStruct(Structured):
 
 
 ## Notes of type checkers / IDEs
-For the most part, `structured` should work with type checkers set to basic levels.  The annotated types present as their unpacked types with a few exceptions.  This is accomplised by using `typing.Annotated`.
+For the most part, `structured` should work with type checkers set to basic levels.  The annotated types present as their unpacked types with a few exceptions.  This is accomplished by using `typing.Annotated`.
 - `int*` and `uint*` present as an `int`
 - `float*` present as `float`.
 - `bool8` presents as `int`.  This may change to `bool` in the future, but it's this way currently because the `?` format specifier packs/unpacks as an `int`.
@@ -261,9 +241,6 @@ class MyStruct(Structured):
 a = MyStruct([1, 2, 3])
 a.items = [4, 5, 6]   # Ok!
 ```
-
-NOTE: In older versions, it was recommened to use `serialized`.  This method has been deprecated and will be removed in `3.0`.
-
 
 ## Generic `Structured` classes
 You can also create your `Structured` class as a `typing.Generic`.  Due to details of how `Generic` works, to get a working specialized version, you must subclass the specialization:
@@ -300,10 +277,11 @@ decorator.  To suppress the generated `__init__` method and use `@dataclass`s
 instead, pass `init=False` to the subclassing machinery.
 
 NOTE: The unpacking logic requires your class's `__init__` to accept at least
-all of the unpacked fields in order as arguments, so if you want to write your
-own or use `@dataclass`s, make sure to mark other types as non-initialization
-variables (with `= field(init=False)`).  You can further initialize those
-variables in a `__post_init__` method.
+all of the unpacked fields, *in order*, as arguments. Any extra arguments must
+have defaults supplied. So if you want to write your own or use `@dataclass`s,
+make sure to mark other types as non-initialization variables
+(with `= field(init=False)`). You can further initialize those variables in a
+`__post_init__` method.
 
 Here's an example of mixing both `structured` types and other types, as well as
 using `@dataclass`s generated `__init__`:
