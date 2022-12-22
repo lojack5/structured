@@ -1,7 +1,7 @@
 import io
 import struct
 
-from typing import TypeAlias, Annotated
+from typing import Annotated
 
 import pytest
 
