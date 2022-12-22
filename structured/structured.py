@@ -11,11 +11,7 @@ from functools import cache, reduce
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
-from .serializers import (
-    NullSerializer,
-    Serializer,
-    StructSerializer,
-)
+from .serializers import NullSerializer, Serializer, StructSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -315,7 +311,6 @@ class Structured:
                     'If this is intentional, use `byte_order_mode=OVERRIDE`.'
                 )
         # Evaluta any generics in base class
-        classdict = cls.__dict__
         if base:
             orig_bases = getattr(cls, '__orig_bases__', ())
             base_to_origbase = {
@@ -325,9 +320,7 @@ class Structured:
             }
             orig_base = base_to_origbase.get(base, None)
             if orig_base:
-                annotations = base._get_specialization_hints(
-                    *get_args(orig_base)
-                )
+                annotations = base._get_specialization_hints(*get_args(orig_base))
                 update_annotations(cls, annotations)
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)

@@ -32,7 +32,8 @@ else:
     from typing import Self, dataclass_transform
 
 
-_T = TypeVar('_T')
+S = TypeVar('S')
+T = TypeVar('T')
 
 
 def update_annotations(cls: type, annotations: dict[str, Any]) -> None:

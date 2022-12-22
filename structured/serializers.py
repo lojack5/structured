@@ -37,8 +37,6 @@ from typing import TypeVar, overload
 
 from .base_types import ByteOrder
 from .type_checking import (
-    _T,
-    Annotated,
     Any,
     BinaryIO,
     Callable,
@@ -46,11 +44,12 @@ from .type_checking import (
     Iterable,
     ReadableBuffer,
     Self,
+    T,
     WritableBuffer,
 )
 
 
-def noop_action(x: _T) -> _T:
+def noop_action(x: T) -> T:
     """A noop for StructActionSerializers where no additional wrapping is
     needed.
     """

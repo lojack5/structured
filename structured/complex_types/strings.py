@@ -59,6 +59,7 @@ class char(str, requires_indexing):
                       type[Union[uint8, uint16, uint32, uint64]],
                       type[NET]]
     """
+
     def __class_getitem__(cls, args) -> type[bytes]:
         """Create a char specialization."""
         if not isinstance(args, tuple):

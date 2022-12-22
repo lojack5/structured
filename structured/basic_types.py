@@ -28,7 +28,12 @@ from .serializers import Serializer, StructActionSerializer, StructSerializer
 from .type_checking import (
     Annotated,
     Any,
+    Callable,
     ClassVar,
+    Generic,
+    S,
+    Self,
+    T,
     TypeVar,
     get_args,
     get_origin,
@@ -53,18 +58,20 @@ class counted(requires_indexing):
     """Base class for simple StructSerializers which have a count argument
     before the format specifier.  For example `char[10]` and `pad[13]`.
     """
+
     serializer: ClassVar[StructSerializer]
     value_type: ClassVar[type]
 
     def __class_getitem__(cls, count: int) -> Annotated:
         # Not sure why pylance reports cls as having no member `value_type`
-        return Annotated[cls.value_type, cls.serializer * count] # type: ignore
+        return Annotated[cls.value_type, cls.serializer * count]  # type: ignore
 
 
 class pad(counted):
     """Represents one (or more, via pad[x]) padding bytes in the format string.
     Padding bytes are discarded when read, and are written zeroed out.
     """
+
     serializer = StructSerializer('x', 0)
     value_type = type(None)
 
@@ -81,6 +88,7 @@ class pascal(str, counted):
     """String format specifier (bytes in Python).  See 'p' in the stdlib struct
     documentation for specific details.
     """
+
     serializer = StructSerializer('p')
     value_type = str
 
@@ -130,7 +138,7 @@ def unwrap_annotated(x: Any) -> Any:
         # test if len(args) > 0
         args = get_args(x)
         actual_type, extras = args[0], args[1:]
-        for extra in args[1:]:
+        for extra in extras:
             # Look for nested Annotated
             nested_extra = unwrap_annotated(extra)
             if isinstance(nested_extra, (Serializer, StructuredAlias)):
@@ -144,21 +152,28 @@ def unwrap_annotated(x: Any) -> Any:
                 else:
                     # Otherwise assume the type's __init__ accepts a single
                     # initialization variable
-                    return StructActionSerializer(st.format, actions=(actual_type, ))
+                    return StructActionSerializer(st.format, actions=(actual_type,))
         # Annotated, but no special extra we're looking for
         return actual_type
     # Not Annotated, or bare Annotated
     return x
 
 
-class SerializeAs:
-    __slots__ = ('serializer', )
+class SerializeAs(Generic[S, T]):
+    __slots__ = ('serializer',)
     serializer: StructSerializer
 
-    def __init__(self, hint: Any):
+    def __init__(self, hint: S) -> None:
         serializer = unwrap_annotated(hint)
         if not isinstance(serializer, StructSerializer):
             raise TypeError(f'SerializeAs requires a basic type, got {hint}')
         elif serializer.num_values != 1:
-            raise TypeError(f'SerializeAs requires a basic type with one value, got {serializer}')
+            raise TypeError(
+                f'SerializeAs requires a basic type with one value, got {serializer}'
+            )
         self.serializer = serializer
+
+    def with_factory(self, action: Callable[[S], T]) -> Self:
+        """Specify a factory method for creating your type from the unpacked type."""
+        st = self.serializer
+        return type(self)(StructActionSerializer(st.format, actions=(action,)))

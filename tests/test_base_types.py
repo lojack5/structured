@@ -84,8 +84,7 @@ class TestCustomType:
                     return self._wrapped == other._wrapped
                 else:
                     return self._wrapped == other
-        serialized = StructActionSerializer('b', actions=(MutableType.from_int, ))
-        MutableType8 = Annotated[MutableType, SerializeAs(serialized)]
+        MutableType8 = Annotated[MutableType, SerializeAs(int8).with_factory(MutableType.from_int)]
 
         class Base(Structured):
             a: MutableType8
