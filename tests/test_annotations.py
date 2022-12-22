@@ -4,10 +4,9 @@ from typing import Annotated, ClassVar, get_origin, get_type_hints
 
 from structured import *
 from structured.basic_types import (
-    unwrap_annotated, _AnnotatedTypes, _UnAnnotatedTypes,
+    unwrap_annotated, _AnnotatedTypes,
 )
 from structured.base_types import requires_indexing
-from structured.serializers import future_requires_indexing
 
 
 class A: pass
@@ -26,12 +25,17 @@ def test_unwrap_annotated() -> None:
         b: Annotated[int, int8]
         c: int
         d: Annotated[int, 'foo']
+        e: Annotated[int, SerializeAs(int8)]
 
     hints = get_type_hints(A, include_extras=True)
     assert unwrap_annotated(hints['a']) is StructSerializer('b')
     assert unwrap_annotated(hints['b']) is StructSerializer('b')
     assert unwrap_annotated(hints['c']) is int
     assert unwrap_annotated(hints['d']) is int
+    ehint = unwrap_annotated(hints['e'])
+    assert isinstance(ehint, StructActionSerializer)
+    assert ehint.format == 'b'
+    assert ehint.actions == (int, )
 
 
 def test_for_annotated() -> None:
@@ -42,9 +46,6 @@ def test_for_annotated() -> None:
     # Basic types
     for kind in _AnnotatedTypes:
         assert get_origin(kind) is Annotated
-    for kind in _UnAnnotatedTypes:
-        assert get_origin(kind) is not Annotated
-        assert issubclass(kind, future_requires_indexing)
     # Complex types: array
     assert get_origin(array) is not Annotated
     assert get_origin(array[Header[1], int8]) is Annotated

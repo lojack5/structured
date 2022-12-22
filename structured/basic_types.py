@@ -18,21 +18,17 @@ __all__ = [
     'float32',
     'float64',
     'pascal',
-    'Formatted',
+    'SerializeAs',
 ]
 
-from functools import cache
 from itertools import chain
 
 from .base_types import requires_indexing
-from .serializers import Serializer, StructActionSerializer, StructSerializer, counted
+from .serializers import Serializer, StructActionSerializer, StructSerializer
 from .type_checking import (
     Annotated,
     Any,
-    Callable,
     ClassVar,
-    Container,
-    Self,
     TypeVar,
     get_args,
     get_origin,
@@ -53,21 +49,29 @@ float32 = Annotated[float, StructSerializer('f')]
 float64 = Annotated[float, StructSerializer('d')]
 
 
+class counted(requires_indexing):
+    """Base class for simple StructSerializers which have a count argument
+    before the format specifier.  For example `char[10]` and `pad[13]`.
+    """
+    serializer: ClassVar[StructSerializer]
+    value_type: ClassVar[type]
+
+    def __class_getitem__(cls, count: int) -> Annotated:
+        # Not sure why pylance reports cls as having no member `value_type`
+        return Annotated[cls.value_type, cls.serializer * count] # type: ignore
+
+
 class pad(counted):
     """Represents one (or more, via pad[x]) padding bytes in the format string.
     Padding bytes are discarded when read, and are written zeroed out.
     """
-
     serializer = StructSerializer('x', 0)
     value_type = type(None)
 
 
 def ispad(annotation: Any) -> bool:
+    """Detect pad[x] generated StructSerializers."""
     unwrapped = unwrap_annotated(annotation)
-    # Un-indexed
-    if isinstance(unwrapped, type) and unwrapped is pad:
-        return True
-    # Indexed
     if isinstance(unwrapped, StructSerializer) and unwrapped.num_values == 0:
         return True
     return False
@@ -77,7 +81,6 @@ class pascal(str, counted):
     """String format specifier (bytes in Python).  See 'p' in the stdlib struct
     documentation for specific details.
     """
-
     serializer = StructSerializer('p')
     value_type = str
 
@@ -107,88 +110,55 @@ _SizeTypes = (uint8, uint16, uint32, uint64)
 
 
 def unwrap_annotated(x: Any) -> Any:
-    """Recursively unwrap an Annotated type annotation, searching for one of:
-    - A format_type class
-    - A Serializer class
-    - A StructuredAlias instance
-    If none are found, returns the Annotated type (ie: in Annotated[int, ...],
-    returns int).  If the annotation isn't an Annotated, returns the original
-    annotation.
+    """We use typing.Annotated to provide serialization details.  These can
+    show up in a few ways:
+    - Annotated[python_type, Serializer]: Happens when hinting with int8, etc
+    - Annotated[python_type, Annotated[python_type, Serializer]:  happens if
+    - Annotated[user_type, SerializedAs[StructSerializer]]
+    - Annotated[user_type, SerializedAs[StructuredAlias]]
+    And in all other cases:
+    - Annotated[some_type, other_info, ...]
 
-    :param x: Type annotation to unwrap.
-    :return: The (possibly unwrapped) final annotation.
+    In the cases we care about, we want the Serializer or StructuredAlias
+    instance for generating Structured.serializer, and in the case of
+    SerializedAs, we want to convert that to a StructActionSerializer as well.
+    In the cases we don't care about, we just want to return the underlying
+    actual type (what get_type_hints would return with include_extras=False).
     """
     if get_origin(x) is Annotated:
-        if args := get_args(x):
-            for meta in args[1:]:
-                # Annotated can be nested, ex:
-                # b: Annotated[int, int8]
-                meta = unwrap_annotated(meta)
-                if isinstance(meta, type):
-                    if issubclass(meta, Serializer):
-                        return meta
-                elif isinstance(meta, (StructuredAlias, Serializer)):
-                    return meta
-            else:
-                # Annotated, but not one of the special types we're looking for
-                return args[0]
-    # Not Annotated
+        # Annotated raises an error if specialized with no args, so no need to
+        # test if len(args) > 0
+        args = get_args(x)
+        actual_type, extras = args[0], args[1:]
+        for extra in args[1:]:
+            # Look for nested Annotated
+            nested_extra = unwrap_annotated(extra)
+            if isinstance(nested_extra, (Serializer, StructuredAlias)):
+                return nested_extra
+            elif isinstance(nested_extra, SerializeAs):
+                st = nested_extra.serializer
+                if isinstance(st, StructActionSerializer):
+                    # If built with a StructActionSerializer, just use that
+                    # (to support custom factory methods)
+                    return st
+                else:
+                    # Otherwise assume the type's __init__ accepts a single
+                    # initialization variable
+                    return StructActionSerializer(st.format, actions=(actual_type, ))
+        # Annotated, but no special extra we're looking for
+        return actual_type
+    # Not Annotated, or bare Annotated
     return x
 
 
-# NOTE: This typehint isn't working how I want.  The issue is stemming from
-# using Annotated instances, and wanting the type to be one of those, or a
-# subclass of format_type.  Look into if this is even possible with hints.
-#
-# TTypes = Union[
-#    # Can be exactly one of the Annotated types
-#    bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16,
-#    float32, float64,
-#    # Or any format_type
-#    format_type,
-# ]
+class SerializeAs:
+    __slots__ = ('serializer', )
+    serializer: StructSerializer
 
-
-class Formatted(requires_indexing):
-    """Class used for creating new `format_type`s.  Provides a class getitem
-    to select the format specifier, by grabbing from one of the provided format
-    types.  The allowed types may be overridden by overriding cls._types.
-
-    For examples of how to use this, see `TestFormatted`.
-    """
-
-    _types: ClassVar[Container] = frozenset()  # Container[TType]?
-    unpack_action: ClassVar[Callable[[Any], Any]]
-
-    @classmethod  # Need to remark as classmethod since we're caching
-    @cache
-    def __class_getitem__(cls, key: StructSerializer) -> type[Self]:
-        """Create an version of this class which uses the given types format
-        specifier for packing/unpacking.
-
-        :param key: A format type this type encapsulates (int*, uint*, etc)
-        :raises TypeError: If an invalid type is passed, or if the type is not
-            included in this class's `_types` container.
-        :return: An Annotated with the specialied information.
-        """
-        unwrapped = unwrap_annotated(key)
-        # Error checking
-        if not isinstance(unwrapped, StructSerializer) or unwrapped.num_values != 1:
-            raise TypeError(f'Formatted key must be a format_type, got {key!r}.')
-        if cls._types is Formatted._types:
-            # Default, just allow any format type
-            pass
-        else:
-            # Overridden _types, get from that set
-            # NOTE: users may do _types = {int8, ...}
-            # So we need to check both the actual key and it's unwrapped
-            # version
-            if key not in cls._types and unwrapped not in cls._types:
-                raise TypeError(
-                    'Formatted key must be one of the allowed types of '
-                    f'{cls.__qualname__}.'
-                )
-        action = getattr(cls, 'unpack_action', cls)
-        return Annotated[
-            cls, StructActionSerializer(unwrapped.format, actions=(action,))
-        ]
+    def __init__(self, hint: Any):
+        serializer = unwrap_annotated(hint)
+        if not isinstance(serializer, StructSerializer):
+            raise TypeError(f'SerializeAs requires a basic type, got {hint}')
+        elif serializer.num_values != 1:
+            raise TypeError(f'SerializeAs requires a basic type with one value, got {serializer}')
+        self.serializer = serializer

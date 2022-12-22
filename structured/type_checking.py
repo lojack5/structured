@@ -1,3 +1,5 @@
+# pragma: no cover
+
 import sys
 import typing
 from typing import (

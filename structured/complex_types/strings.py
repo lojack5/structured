@@ -17,7 +17,7 @@ from functools import cache, partial
 
 from ..base_types import ByteOrder, requires_indexing
 from ..basic_types import _SizeTypes, _TSize, unwrap_annotated
-from ..serializers import Serializer, StructSerializer, future_requires_indexing
+from ..serializers import Serializer, StructSerializer
 from ..type_checking import (
     Annotated,
     Any,
@@ -44,7 +44,7 @@ class NET:
 _single_char = StructSerializer('s')
 
 
-class char(str, future_requires_indexing):
+class char(str, requires_indexing):
     """A bytestring, with three ways of denoting length. If size is an integer,
     it is a static size.  If a uint* type is specified, it is prefixed with
     a packed value of that type which holds the length.  If the NET type is
@@ -59,10 +59,6 @@ class char(str, future_requires_indexing):
                       type[Union[uint8, uint16, uint32, uint64]],
                       type[NET]]
     """
-
-    # TODO: version 3.* replace future_requires_indexing with requires_indexing
-    serializer: ClassVar[StructSerializer] = _single_char
-
     def __class_getitem__(cls, args) -> type[bytes]:
         """Create a char specialization."""
         if not isinstance(args, tuple):

@@ -149,6 +149,17 @@ class TestStructured:
         assert isinstance(Derived2.serializer, struct.Struct)
         assert Derived2.serializer.format == ByteOrder.LE.value + '2b'
 
+    def test_with_byte_order(self) -> None:
+        class Base(Structured):
+            a: uint16
+        objLE = Base(0xF0).with_byte_order(ByteOrder.LE)
+        objBE = Base(0xF0).with_byte_order(ByteOrder.BE)
+        target_le_data = struct.pack(f'{ByteOrder.LE.value}H', 0xF0)
+        target_be_data = struct.pack(f'{ByteOrder.BE.value}H', 0xF0)
+        assert target_le_data != target_be_data
+        assert objLE.pack() == target_le_data
+        assert objBE.pack() == target_be_data
+
     def test_unpack_read(self) -> None:
         class Base(Structured):
             a: int8
