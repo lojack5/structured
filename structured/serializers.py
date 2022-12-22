@@ -37,8 +37,6 @@ from typing import TypeVar, overload
 
 from .base_types import ByteOrder
 from .type_checking import (
-    _T,
-    Annotated,
     Any,
     BinaryIO,
     Callable,
@@ -46,11 +44,12 @@ from .type_checking import (
     Iterable,
     ReadableBuffer,
     Self,
+    T,
     WritableBuffer,
 )
 
 
-def noop_action(x: _T) -> _T:
+def noop_action(x: T) -> T:
     """A noop for StructActionSerializers where no additional wrapping is
     needed.
     """
@@ -323,28 +322,6 @@ class StructSerializer(struct.Struct, Serializer):
         byte_order, fmt = self._split_format
         fmt = reduce(partial(fold_overlaps, combine_strings=True), repeat(fmt, other))
         return StructSerializer(fmt, self.num_values * other, byte_order)
-
-
-class future_requires_indexing:
-    """Temporary marker base class for classes that will become based on
-    ``requires_indexing`` in the future (pad, pascal, char).
-    """
-
-    serializer: ClassVar[Serializer]
-
-
-class counted(future_requires_indexing):
-    """Base class for simple StructSerializers which have an optional count
-    argument before the format specifier.  Examples of this are `char[10]` and
-    `pad[13]`.
-    """
-
-    serializer: ClassVar[StructSerializer]
-    value_type: ClassVar[type]
-
-    @classmethod
-    def __class_getitem__(cls, count: int) -> type[Self]:
-        return Annotated[cls.value_type, cls.serializer * count]  # type: ignore
 
 
 def _apply_actions(unpacker):

@@ -1,6 +1,7 @@
 [tool.coverage.run]
 branch = true
 source = ['structured']
+omit = ['structured/type_checking.py']
 
 [tool.coverage.report]
 show_missing = true

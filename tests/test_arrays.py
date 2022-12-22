@@ -103,7 +103,7 @@ def test_static_format():
 
 
 def test_static_format_action():
-    class WrappedInt(Formatted):
+    class WrappedInt:
         def __init__(self, wrapped: int):
             self._wrapped = wrapped
 
@@ -114,11 +114,12 @@ def test_static_format_action():
             if isinstance(other, type(self)):
                 return self._wrapped == other._wrapped
             return NotImplemented
+    WrappedInt8 = Annotated[WrappedInt, SerializeAs(int8)]
 
     class StaticAction(Structured):
-        a: array[Header[3], WrappedInt[int8]]
+        a: array[Header[3], WrappedInt8]
 
-    target_obj = StaticAction(list(map(WrappedInt[int8], (1 ,2, 3))))
+    target_obj = StaticAction(list(map(WrappedInt, (1 ,2, 3))))
 
     st = struct.Struct('3b')
     target_data = st.pack(1, 2, 3)

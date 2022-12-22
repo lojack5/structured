@@ -4,7 +4,6 @@ import sys
 
 __all__ = [
     'Structured',
-    'serialized',
 ]
 
 import operator
@@ -12,12 +11,7 @@ from functools import cache, reduce
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
-from .serializers import (
-    NullSerializer,
-    Serializer,
-    StructSerializer,
-    future_requires_indexing,
-)
+from .serializers import NullSerializer, Serializer, StructSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -36,7 +30,7 @@ from .type_checking import (
     isclassvar,
     update_annotations,
 )
-from .utils import StructuredAlias, deprecated, warn_deprecated, attrgetter
+from .utils import StructuredAlias, attrgetter
 
 
 def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
@@ -49,68 +43,29 @@ def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
     """
     if isclassvar(attr_type):
         return False
-    if isinstance(attr_type, type):
-        if issubclass(attr_type, requires_indexing):
-            raise TypeError(f'{attr_type.__qualname__} must be specialized')
-        if issubclass(attr_type, (Serializer, Structured)):
-            return True
-        if issubclass(attr_type, future_requires_indexing):
-            warn_deprecated(
-                attr_type,
-                '2.2',
-                '3.0',
-                issue=0,
-                use_instead=f'Use explicit length: {attr_type.__name__}[1]',
-            )
-            return True
-    elif isinstance(attr_type, Serializer):
+    if isinstance(attr_type, type) and issubclass(attr_type, requires_indexing):
+        raise TypeError(f'{attr_type.__qualname__} must be specialized')
+    if isinstance(attr_type, Serializer):
         return True
     return False
 
 
-@deprecated('2.1.0', '3.0', issue=5, use_instead='Annotated[unpacked_type, kind]')
-def serialized(kind: Any) -> Any:
-    """Type erasure for class definitions, allowing for linters to pick up the
-    correct final type.  For example:
-
-    class MyStruct(Structured):
-        items: list[int] = serialized(array[4, int32])
-    """
-    return kind
-
-
 def filter_typehints(
     typehints: dict[str, Any],
-    classdict: dict[str, Any],
 ) -> dict[str, Serializer]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
     :param typehints: A class's typehints dictionary.  NOTE: This needs to be
         obtained via `get_type_hints(..., include_extras=True)`.
-    :param classdict: The class's dictionary, used for the deprecated optional
-        syntax of using `serialized`.
     :return: A filtered dictionary containing only attributes with types used
         by Structured.
-    :rtype: dict[str, type[_Annotation]]
     """
-    filtered = {
+    return {
         attr: unwrapped
         for attr, attr_type in typehints.items()
         if validate_typehint((unwrapped := unwrap_annotated(attr_type)))
     }
-    for attr, attr_type in tuple(classdict.items()):
-        if validate_typehint((unwrapped := unwrap_annotated(attr_type))):
-            filtered[attr] = unwrapped
-            # del classdict[attr]
-    # TODO: version 3.* remove this backwards compatibility for pad, char, pascal
-    for attr in filtered:
-        attr_type = filtered[attr]
-        if isinstance(attr_type, type) and issubclass(
-            attr_type, future_requires_indexing
-        ):
-            filtered[attr] = attr_type.serializer
-    return filtered
 
 
 def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
@@ -122,11 +77,9 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
         Structured class itself, or None if no such base class exists.
     """
     bases = tuple(
-        (
-            base
-            for base in cls.__bases__
-            if issubclass(base, Structured) and base is not Structured
-        )
+        base
+        for base in cls.__bases__
+        if issubclass(base, Structured) and base is not Structured
     )
     if len(bases) > 1:
         raise TypeError(
@@ -305,15 +258,8 @@ class Structured:
                 'If they are meant to be serailized, make sure to annotate '
                 'them appropriately.'
             )
-        # TODO: optimization possible?  Most of the calls here are cached
-        # already, so the most expensive part is the get_type_hints part.  But
-        # this method is cached too, so just go as is?
-        items = get_type_hints(cls, include_extras=True).items()
-        hints = {
-            attr: unwrap_annotated(attr_type)
-            for attr, attr_type in items
-            if attr in attrs
-        }
+        hints = filter_typehints(get_type_hints(cls, include_extras=True))
+        hints = {attr: hint for attr, hint in hints.items() if attr in attrs}
         serializer = sum(hints.values(), NullSerializer()).with_byte_order(
             cls.byte_order
         )
@@ -365,7 +311,6 @@ class Structured:
                     'If this is intentional, use `byte_order_mode=OVERRIDE`.'
                 )
         # Evaluta any generics in base class
-        classdict = cls.__dict__
         if base:
             orig_bases = getattr(cls, '__orig_bases__', ())
             base_to_origbase = {
@@ -375,15 +320,11 @@ class Structured:
             }
             orig_base = base_to_origbase.get(base, None)
             if orig_base:
-                annotations, clsdict = base._get_specialization_hints(
-                    *get_args(orig_base)
-                )
+                annotations = base._get_specialization_hints(*get_args(orig_base))
                 update_annotations(cls, annotations)
-                # NOTE: cls.__dict__ is a mappingproxy
-                classdict = dict(classdict) | clsdict
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
-        applicable_typehints = filter_typehints(typehints, classdict)
+        applicable_typehints = filter_typehints(typehints)
         # Which variables show up in the __init__
         # Need to ensure 'self' shows up first
         typehints = get_type_hints(cls)
@@ -418,8 +359,8 @@ class Structured:
     def _get_specialization_hints(
         cls,
         *args,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Get needed updates to __annotations__ and __dict__ if this class were
+    ) -> dict[str, Any]:
+        """Get needed updates to __annotations__ and if this class were
         to be specialized with `args`,
         """
         supers: dict[type[Structured], Any] = {}
@@ -434,7 +375,6 @@ class Structured:
             raise TypeError(f'{cls.__name__} is not a Generic')
         # First handle the direct base class
         annotations = {}
-        classdict = {}
         cls_annotations = get_annotations(cls)
         for attr, attr_type in get_type_hints(cls, include_extras=True).items():
             if attr in cls_annotations:
@@ -444,19 +384,11 @@ class Structured:
                     annotations[attr] = remapped_type
                 elif isinstance(unwrapped, StructuredAlias):
                     annotations[attr] = unwrapped.resolve(tvar_map)
-        for attr, attr_val in cls.__dict__.items():
-            unwrapped = unwrap_annotated(attr_val)
-            if isinstance(unwrapped, StructuredAlias):
-                classdict[attr] = unwrapped.resolve(tvar_map)
         # Now any classes higher in the chain
         all_annotations = [annotations]
-        all_classdict = [classdict]
         for base, alias in supers.items():
             args = get_args(alias)
             args = (tvar_map.get(arg, arg) for arg in args)
-            super_annotations, super_classdict = base._get_specialization_hints(*args)
+            super_annotations = base._get_specialization_hints(*args)
             all_annotations.append(super_annotations)
-            all_classdict.append(super_classdict)
-        final_annotations = reduce(operator.or_, reversed(all_annotations))
-        final_classdict = reduce(operator.or_, reversed(all_classdict))
-        return final_annotations, final_classdict
+        return reduce(operator.or_, reversed(all_annotations))
