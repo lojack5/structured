@@ -30,7 +30,7 @@ from .type_checking import (
     isclassvar,
     update_annotations,
 )
-from .utils import StructuredAlias, attrgetter
+from .utils import StructuredAlias, attrgetter, zips
 
 
 def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
@@ -156,8 +156,9 @@ class Structured:
 
         :param buffer: A bytes-like object.
         """
-        for attr, value in zip(self.attrs, self.serializer.unpack(buffer)):
+        for attr, value in zips(self.attrs, self.serializer.unpack(buffer), strict=True):
             setattr(self, attr, value)
+
 
     def unpack_read(self, readable: BinaryIO) -> None:
         """Read data from a file-like object and unpack it into values, assigned
@@ -165,7 +166,8 @@ class Structured:
 
         :param readable: readable file-like object.
         """
-        for attr, value in zip(self.attrs, self.serializer.unpack_read(readable)):
+        # Py 3.10+, just pass strict=True
+        for attr, value in zips(self.attrs, self.serializer.unpack_read(readable), strict=True):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -176,7 +178,7 @@ class Structured:
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zip(self.attrs, self.serializer.unpack_from(buffer, offset)):
+        for attr, value in zips(self.attrs, self.serializer.unpack_from(buffer, offset), strict=True):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:

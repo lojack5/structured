@@ -19,6 +19,7 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 if sys.version_info < (3, 10):
@@ -27,13 +28,15 @@ else:
     from typing import ParamSpec, TypeAlias, TypeGuard
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Self, dataclass_transform
+    from typing_extensions import Self, dataclass_transform, TypeVarTuple, Unpack
 else:
-    from typing import Self, dataclass_transform
+    from typing import Self, dataclass_transform, TypeVarTuple, Unpack
 
 
 S = TypeVar('S')
 T = TypeVar('T')
+Ts = TypeVarTuple('Ts')
+Ss = TypeVarTuple('Ss')
 
 
 def update_annotations(cls: type, annotations: dict[str, Any]) -> None:
