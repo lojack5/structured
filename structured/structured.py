@@ -29,6 +29,7 @@ from .type_checking import (
     get_type_hints,
     isclassvar,
     update_annotations,
+    Iterable,
 )
 from .utils import StructuredAlias, attrgetter, zips
 
@@ -151,12 +152,15 @@ class Structured:
         return new_obj
 
     # General packers/unpackers
+    def _serializer(self) -> Serializer:
+        return self.serializer.preprocess(self)
+
     def unpack(self, buffer: ReadableBuffer) -> None:
         """Unpack values from the bytes-like `buffer` and assign them to members
 
         :param buffer: A bytes-like object.
         """
-        for attr, value in zips(self.attrs, self.serializer.unpack(buffer), strict=True):
+        for attr, value in zips(self.attrs, self._serializer().unpack(buffer), strict=True):
             setattr(self, attr, value)
 
 
@@ -166,8 +170,7 @@ class Structured:
 
         :param readable: readable file-like object.
         """
-        # Py 3.10+, just pass strict=True
-        for attr, value in zips(self.attrs, self.serializer.unpack_read(readable), strict=True):
+        for attr, value in zips(self.attrs, self._serializer().unpack_read(readable), strict=True):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -178,12 +181,12 @@ class Structured:
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zips(self.attrs, self.serializer.unpack_from(buffer, offset), strict=True):
+        for attr, value in zips(self.attrs, self._serializer().unpack_from(buffer, offset), strict=True):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self.serializer.pack(*type(self)._attrgetter(self))
+        return self._serializer().pack(*type(self)._attrgetter(self))
 
     def pack_write(self, writable: BinaryIO) -> None:
         """Pack the class's values according to the format string, then write
@@ -191,7 +194,7 @@ class Structured:
 
         :param writable: writable file-like object.
         """
-        self.serializer.pack_write(writable, *type(self)._attrgetter(self))
+        self._serializer().pack_write(writable, *type(self)._attrgetter(self))
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
@@ -200,9 +203,17 @@ class Structured:
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self.serializer.pack_into(buffer, offset, *type(self)._attrgetter(self))
+        self._serializer().pack_into(buffer, offset, *type(self)._attrgetter(self))
 
     # Creation of objects from unpackable types
+    @classmethod
+    def _create_proxy(cls) -> tuple[_Proxy, Serializer]:
+        """Create a proxy object for this class, which can be used to create
+        new instances of this class.
+        """
+        proxy = _Proxy(cls.attrs)
+        return proxy, cls.serializer.preprocess(proxy)
+
     @classmethod
     def create_unpack(cls, buffer: ReadableBuffer) -> Self:
         """Create a new instance, initialized with values unpacked from a
@@ -211,7 +222,9 @@ class Structured:
         :param buffer: A bytes-like object.
         :return: A new Structured object unpacked from the buffer.
         """
-        return cls(*cls.serializer.unpack(buffer))
+        proxy, serializer = cls._create_proxy()
+        proxy.__set(serializer.unpack(buffer))
+        return cls(*proxy)
 
     @classmethod
     def create_unpack_from(cls, buffer: ReadableBuffer, offset: int = 0) -> Self:
@@ -222,7 +235,9 @@ class Structured:
         :param offset: Location in the buffer to begin unpacking.
         :return: A new Structured object unpacked from the buffer.
         """
-        return cls(*cls.serializer.unpack_from(buffer, offset))
+        proxy, serializer = cls._create_proxy()
+        proxy.__set(serializer.unpack_from(buffer, offset))
+        return cls(*proxy)
 
     @classmethod
     def create_unpack_read(cls, readable: BinaryIO) -> Self:
@@ -232,7 +247,9 @@ class Structured:
         :param readable: A readable file-like object.
         :return: A new Structured object unpacked from the readable object.
         """
-        return cls(*cls.serializer.unpack_read(readable))
+        proxy, serializer = cls._create_proxy()
+        proxy.__set(serializer.unpack_read(readable))
+        return cls(*proxy)
 
     @classmethod
     @cache
@@ -394,3 +411,19 @@ class Structured:
             super_annotations = base._get_specialization_hints(*args)
             all_annotations.append(super_annotations)
         return reduce(operator.or_, reversed(all_annotations))
+
+
+class _Proxy:
+    """Proxy object for a Structured instance, used as a placeholder for the
+    create_unpack_*** methods to recieve values, and still allow Union deciders
+    to work.
+    """
+    def __init__(self, attrs: tuple[str, ...]) -> None:
+        self.__attrs = attrs
+
+    def __set(self, values: Iterable[Any]) -> None:
+        for attr, value in zips(self.__attrs, values, strict=True):
+            setattr(self, attr, value)
+
+    def __iter__(self):
+        return (getattr(self, attr) for attr in self.__attrs)

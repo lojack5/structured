@@ -11,6 +11,7 @@ on struct.Struct) support multiplication by an integer.
 
 The Serializer API is almost identical to struct.Struct, with a few additions
 and one alteration:
+ - New method 'preprocess'.
  - New attribute `num_values`.
  - New unpacking method `unpack_read`.
  - New packing method `pack_read`.
@@ -36,6 +37,7 @@ from io import BytesIO
 from itertools import chain, repeat
 from typing import TypeVar, overload
 
+from . import basic_types   # not fully initialized, so cant import from
 from .base_types import ByteOrder
 from .type_checking import (
     Any,
@@ -115,6 +117,18 @@ class Serializer(Generic[Unpack[Ts]]):
     """Indicates the number of variables returned from an unpack operation, and
     the number of varialbes required for a pack operation.
     """
+
+    def preprocess(self, partial_object: Any) -> Serializer:
+        """Perform any state logic needed just prior to an pack/unpack operation
+        on `partial_object`. The object will be a fully initialized instance
+        for pack operations, but only a proxy object for unpack operations.
+        Durin unpacking, only the attributes unpacked before this serializer are
+        set on the object.
+
+        :param partial_object: The object being packed or unpacked.
+        :return: A serializer appropriate for unpacking the next attribute(s).
+        """
+        return self
 
     def pack(self, *values: Unpack[Ts]) -> bytes:
         """Pack the given values according to this Serializer's logic, returning
@@ -418,6 +432,15 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         self.serializers = serializers
         self.size = 0
         self.num_values = sum(serializer.num_values for serializer in serializers)
+        if any(isinstance(serializer, CompoundSerializer) for serializer in serializers):
+            raise TypeError('cannot nest CompoundSerializers')
+        self._needs_preprocess = any(serializer.preprocess is not Serializer.preprocess for serializer in serializers)
+
+    def preprocess(self, partial_object: Any) -> Serializer:
+        if not self._needs_preprocess:
+            return self
+        else:
+            return _SpecializedCompoundSerializer(self, partial_object)
 
     def _iter_packers(self, values: tuple[Unpack[Ts]]) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
         """Common boilerplate needed for iterating over sub-serializers and
@@ -512,3 +535,84 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
             return NotImplemented
         to_append = self.serializers[:]
         return self._add_impl(serializers, to_append)
+
+
+class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unpack[Ts]]):
+    """CompoundSerializer that will forward a partial_object to sub-serializers,
+    and update the size of the originating CompoundSerializer.
+    """
+    def __init__(self, origin: CompoundSerializer, partial_object: Any) -> None:
+        self.origin = origin
+        self.partial_object = partial_object
+        self.serializers = tuple(
+            serializer.preprocess(partial_object) for serializer in origin.serializers
+        )
+        self.size = origin.size
+        self.num_values = origin.num_values
+
+    def preprocess(self, partial_object: Any) -> Serializer:
+        return self
+
+    def _iter_packers(self, values: tuple[Unpack[Ts]]) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
+        size = 0
+        i = 0
+        for serializer in self.serializers:
+            count = serializer.num_values
+            yield serializer.preprocess(self.partial_object), values[i : i + count], size
+            size += serializer.size
+            i += count
+        self.size = size
+        self.origin.size = size
+
+    def _iter_unpackers(self) -> Iterable[tuple[Serializer, int]]:
+        size = 0
+        for serializer in self.serializers:
+            yield serializer.preprocess(self.partial_object), size
+            size += serializer.size
+        self.size = size
+        self.origin.size = size
+
+
+class UnionSerializer(Serializer):
+    # NOTE: Union types are not allowed in TypeVarTuples, so we can't hint this
+    """Serializer to handle loading of attributes with multiple types, type is
+    decided just prior to packing/unpacking the attribute.
+    """
+    default: Serializer
+    result_map: dict[Any, Serializer]
+
+    def __init__(self, decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
+        """result_map should be a mapping of possible return values from `decider`
+        to `Annotated` instances with a Serializer as an extra argument.  The
+        default should either be `None` to raise an error if the decider returns
+        an unmapped value, or an `Annotated` instance with a Serializer as an
+        extra argument.
+        """
+        self.decide = decider
+        self.default = basic_types.unwrap_annotated(default)
+        self.result_map = {
+            key: basic_types.unwrap_annotated(serializer)
+            for key, serializer in result_map.items()
+        }
+        # Check types
+        if not isinstance(self.default, Serializer):
+            raise TypeError('default must be a Serializer')
+        if any(not isinstance(serializer, Serializer) for serializer in self.result_map.values()):
+            raise TypeError('result_map values must be Serializers')
+        self._last_serializer = self.default
+
+    @property
+    def size(self) -> int:
+        return self._last_serializer.size
+
+    def preprocess(self, partial_object: Any) -> Serializer:
+        result = self.decide(partial_object)
+        serializer = self.result_map.get(result, self.default)
+        try:
+            self._last_serializer = serializer.preprocess(partial_object)
+        except AttributeError:
+            if serializer is None:
+                raise ValueError(f'Union decider {self.decide!r} returned an unmapped value {result!r}') from None
+            else:
+                raise
+        return self._last_serializer
