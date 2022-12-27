@@ -24,6 +24,11 @@ def test_counted() -> None:
     with pytest.raises(ValueError):
         pad[0]
 
+    # Check that if we use @ anywhere but with char, pad, pascal, unicode
+    # that we'll get an error
+    with pytest.raises(TypeError):
+        StructSerializer('i') @ 2
+
 
 class TestCustomType:
     def test_subclassing_any(self) -> None:

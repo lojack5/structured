@@ -28,6 +28,8 @@ __all__ = [
     'StructSerializer',
     'StructActionSerializer',
     'CompoundSerializer',
+    'UnionSerializer',
+    'config',
 ]
 
 import re
@@ -290,6 +292,9 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         super().__init__(byte_order.value + format)
         self.num_values = num_values
 
+    def __str__(self) -> str:
+        return f'{type(self).__name__}({self.format}, {self.num_values})'
+
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
         old_byte_order, fmt = self._split_format
         if old_byte_order is byte_order:
@@ -332,6 +337,21 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         return super().__add__(other)
 
     def __mul__(self, other: int) -> StructSerializer:  # no tool to hint this yet
+        """Return a new StructSerializer that unpacks `other` copies of the
+        kine this one does.  I.e: for non-string types it puts a multiplier
+        number in front of the format specifier, for strings it repeats the
+        format specifier.
+        """
+        return self._mul_impl(other)
+
+    def __matmul__(self, other: int) -> StructSerializer:
+        """Return a new StructSerializer that folds strings together when
+        multiplying.  NOTE: This is only supported for StructSerializers that
+        consist of either a 's', 'p', or 'x' format specifier.
+        """
+        return self._mul_impl(other, True)
+
+    def _mul_impl(self, other: int, combine_strings: bool = False) -> StructSerializer:
         if not isinstance(other, int):
             return NotImplemented
         elif other <= 0:
@@ -339,8 +359,18 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         elif other == 1:
             return self
         byte_order, fmt = self._split_format
-        fmt = reduce(partial(fold_overlaps, combine_strings=True), repeat(fmt, other))
-        return StructSerializer(fmt, self.num_values * other, byte_order)
+        if combine_strings:
+            if fmt in ('s', 'p'):
+                num_values = 1
+            elif fmt == 'x':
+                num_values = 0
+            else:
+                return NotImplemented
+        else:
+            num_values = self.num_values * other
+        fmt = reduce(partial(fold_overlaps, combine_strings=combine_strings), repeat(fmt, other))
+        return StructSerializer(fmt, num_values, byte_order)
+
 
 
 class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
@@ -410,6 +440,10 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         return StructActionSerializer(fmt, num_values, byte_order, actions)
 
     def __mul__(self, other: int) -> StructActionSerializer:    # no way to hint this yet
+        # TODO: Split into __mul__ and __matmul__?  Probably don't need to,
+        # since __matmul__ *should* only be used for bare 's', 'p', and 'x'
+        # formats, but might need to in the future if someone wants an action
+        # applied to a null_char or something.
         if not isinstance(other, int):
             return NotImplemented
         elif other <= 0:
@@ -434,7 +468,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         self.num_values = sum(serializer.num_values for serializer in serializers)
         if any(isinstance(serializer, CompoundSerializer) for serializer in serializers):
             raise TypeError('cannot nest CompoundSerializers')
-        self._needs_preprocess = any(serializer.preprocess is not Serializer.preprocess for serializer in serializers)
+        self._needs_preprocess = any(type(serializer).preprocess is not Serializer.preprocess for serializer in serializers)
 
     def preprocess(self, partial_object: Any) -> Serializer:
         if not self._needs_preprocess:
@@ -544,9 +578,7 @@ class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unp
     def __init__(self, origin: CompoundSerializer, partial_object: Any) -> None:
         self.origin = origin
         self.partial_object = partial_object
-        self.serializers = tuple(
-            serializer.preprocess(partial_object) for serializer in origin.serializers
-        )
+        self.serializers = origin.serializers
         self.size = origin.size
         self.num_values = origin.num_values
 
@@ -580,6 +612,7 @@ class UnionSerializer(Serializer):
     """
     default: Serializer
     result_map: dict[Any, Serializer]
+    num_values: ClassVar[int] = 1
 
     def __init__(self, decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
         """result_map should be a mapping of possible return values from `decider`
@@ -595,10 +628,16 @@ class UnionSerializer(Serializer):
             for key, serializer in result_map.items()
         }
         # Check types
-        if not isinstance(self.default, Serializer):
-            raise TypeError('default must be a Serializer')
-        if any(not isinstance(serializer, Serializer) for serializer in self.result_map.values()):
-            raise TypeError('result_map values must be Serializers')
+        if self.default is not None:
+            if not isinstance(self.default, Serializer) and self.default is not None:
+                raise TypeError('default must be a Serializer')
+            elif self.default.num_values != 1:
+                raise ValueError('default must unpack a single value')
+        for serializer in self.result_map.values():
+            if not isinstance(serializer, Serializer):
+                raise TypeError('result_map values must be Serializers')
+            elif serializer.num_values != 1:
+                raise ValueError('result_map values must unpack a single value')
         self._last_serializer = self.default
 
     @property
@@ -607,12 +646,17 @@ class UnionSerializer(Serializer):
 
     def preprocess(self, partial_object: Any) -> Serializer:
         result = self.decide(partial_object)
-        serializer = self.result_map.get(result, self.default)
-        try:
-            self._last_serializer = serializer.preprocess(partial_object)
-        except AttributeError:
-            if serializer is None:
+        if self.default is None:
+            try:
+                serializer = self.result_map[result]
+            except KeyError:
                 raise ValueError(f'Union decider {self.decide!r} returned an unmapped value {result!r}') from None
-            else:
-                raise
+        else:
+            serializer = self.result_map.get(result, self.default)
+        self._last_serializer = serializer.preprocess(partial_object)
         return self._last_serializer
+
+
+def config(decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any) -> Any:
+    """Type erasing method for configuring Union types with a UnionSerializer"""
+    return UnionSerializer(decider, result_map, default)

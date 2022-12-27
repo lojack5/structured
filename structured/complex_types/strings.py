@@ -75,7 +75,7 @@ class char(str, requires_indexing):
         if count in _SizeTypes:
             serializer = _dynamic_char(unwrap_annotated(count))
         elif isinstance(count, int):
-            serializer = _single_char * count
+            serializer = _single_char @ count
         elif count is NET:
             serializer = _net_char()
         elif isinstance(count, TypeVar):
@@ -178,7 +178,7 @@ class unicode(str, requires_indexing):
         if count in _SizeTypes:
             serializer = _dynamic_char(unwrap_annotated(count))
         elif isinstance(count, int):
-            serializer = _single_char * count
+            serializer = _single_char @ count
         elif count is NET:
             serializer = _net_char()
         elif isinstance(count, bytes):
@@ -218,7 +218,7 @@ class _dynamic_char(Serializer):
         """
         raw = values[0]
         count = len(raw)
-        st = self.st + _single_char * count
+        st = self.st + _single_char @ count
         self.size = st.size
         return st, count, raw
 
@@ -272,7 +272,7 @@ class _dynamic_char(Serializer):
         """
         count: int = self.st.unpack_from(buffer, offset)[0]
         self.size = self.st.size + count
-        st = _single_char * count
+        st = _single_char @ count
         return st.unpack_from(buffer, offset + self.st.size)
 
     def unpack_read(self, readable: BinaryIO) -> tuple:
@@ -283,7 +283,7 @@ class _dynamic_char(Serializer):
         """
         count: int = self.st.unpack_read(readable)[0]
         self.size = self.st.size + count
-        st = _single_char * count
+        st = _single_char @ count
         return st.unpack_read(readable)
 
 
@@ -308,7 +308,7 @@ class _terminated_char(Serializer):
             raw += self.terminator
         count = len(raw)
         self.size = count
-        return _single_char * count, raw
+        return _single_char @ count, raw
 
     def pack(self, *values: bytes) -> bytes:
         st, data = self._st_data(values)
@@ -387,11 +387,11 @@ class _net_char(Serializer):
         raw = values[0]
         count = len(raw)
         if count < 128:
-            st = self.short_len + _single_char * count
+            st = self.short_len + _single_char @ count
         elif count > 0x7FFF:
             raise ValueError('.NET string length too long to encode.')
         else:
-            st = self.long_len + _single_char * count
+            st = self.long_len + _single_char @ count
             count = 0x80 | count & 0x7F | (count & 0xFF80) << 1
         self.size = st.size
         return st, count, raw

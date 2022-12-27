@@ -11,7 +11,7 @@ from functools import cache, reduce
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
-from .serializers import NullSerializer, Serializer, StructSerializer
+from .serializers import NullSerializer, Serializer, StructSerializer, UnionSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -30,17 +30,23 @@ from .type_checking import (
     isclassvar,
     update_annotations,
     Iterable,
+    get_union_args,
+    UnionType,
+    isunion,
+    cast,
 )
 from .utils import StructuredAlias, attrgetter, zips
 
 
-def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
+def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType]:
     """Filter to weed out only annotations which Structured uses to generate
-    its serializers.
+    its serializers.  These are:
+    - typing.Annotated with a Serializer as an extra argument
+    - Union types
 
     :param attr_type: A type annotation.
-    :raises TypeError: On a type that derives from `structured_type` but hasn't
-        been implemented.  This is for devs to catch on making new types.
+    :raises TypeError: On a type that derives from `requires_indexing` but
+        has not been indexed.
     """
     if isclassvar(attr_type):
         return False
@@ -48,12 +54,14 @@ def validate_typehint(attr_type: type) -> TypeGuard[Serializer]:
         raise TypeError(f'{attr_type.__qualname__} must be specialized')
     if isinstance(attr_type, Serializer):
         return True
+    if isunion(attr_type):
+        return all(map(lambda x: validate_typehint(unwrap_annotated(x)), get_union_args(attr_type)))
     return False
 
 
 def filter_typehints(
     typehints: dict[str, Any],
-) -> dict[str, Serializer]:
+) -> dict[str, Serializer | UnionType]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
@@ -134,7 +142,7 @@ class Structured:
     __slots__ = ()
     serializer: ClassVar[Serializer] = StructSerializer('', 0)
     attrs: ClassVar[tuple[str, ...]] = ()
-    _attrgetter: Callable[[Structured], tuple[Any, ...]]
+    _attrgetter: ClassVar[Callable[[Structured], tuple[Any, ...]]]
     byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
 
     def __post_init__(self) -> None:
@@ -223,7 +231,7 @@ class Structured:
         :return: A new Structured object unpacked from the buffer.
         """
         proxy, serializer = cls._create_proxy()
-        proxy.__set(serializer.unpack(buffer))
+        proxy(serializer.unpack(buffer))
         return cls(*proxy)
 
     @classmethod
@@ -236,7 +244,7 @@ class Structured:
         :return: A new Structured object unpacked from the buffer.
         """
         proxy, serializer = cls._create_proxy()
-        proxy.__set(serializer.unpack_from(buffer, offset))
+        proxy(serializer.unpack_from(buffer, offset))
         return cls(*proxy)
 
     @classmethod
@@ -248,7 +256,7 @@ class Structured:
         :return: A new Structured object unpacked from the readable object.
         """
         proxy, serializer = cls._create_proxy()
-        proxy.__set(serializer.unpack_read(readable))
+        proxy(serializer.unpack_read(readable))
         return cls(*proxy)
 
     @classmethod
@@ -344,6 +352,16 @@ class Structured:
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
         applicable_typehints = filter_typehints(typehints)
+        # Handle types that need more information from the classdict
+        for attr in applicable_typehints:
+            if isunion(applicable_typehints[attr]):
+                serializer = getattr(cls, attr, None)
+                if isinstance(serializer, UnionSerializer):
+                    applicable_typehints[attr] = serializer
+                else:
+                    raise ValueError('Union types must be configured')
+        # All values are now Serializers
+        applicable_typehints = cast(dict[str, Serializer], applicable_typehints)
         # Which variables show up in the __init__
         # Need to ensure 'self' shows up first
         typehints = get_type_hints(cls)
@@ -418,10 +436,13 @@ class _Proxy:
     create_unpack_*** methods to recieve values, and still allow Union deciders
     to work.
     """
+    # NOTE: Only using __dunder__ methods, so any attributes on the class this
+    # is a proxy for won't be shadowed.
     def __init__(self, attrs: tuple[str, ...]) -> None:
         self.__attrs = attrs
 
-    def __set(self, values: Iterable[Any]) -> None:
+
+    def __call__(self, values: Iterable[Any]) -> None:
         for attr, value in zips(self.__attrs, values, strict=True):
             setattr(self, attr, value)
 

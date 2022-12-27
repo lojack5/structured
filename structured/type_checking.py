@@ -2,6 +2,7 @@
 
 import sys
 import typing
+from types import UnionType
 from typing import (
     Annotated,
     Any,
@@ -20,6 +21,7 @@ from typing import (
     get_origin,
     get_type_hints,
     overload,
+    Union,
 )
 
 if sys.version_info < (3, 10):
@@ -64,6 +66,26 @@ def isclassvar(annotation: Any) -> bool:
     :param annotation: Fully resolved type annotation to test.
     """
     return get_origin(annotation) is ClassVar
+
+
+def isunion(annotation: Any) -> TypeGuard[UnionType]:
+    """Determine if a type annotation is a union.
+
+    :param annotation: Fully resolved type annotation to test.
+    """
+    return get_origin(annotation) in (Union, UnionType)
+
+
+def get_union_args(annotation: Any) -> tuple[Any, ...]:
+    """Get the arguments of a union type annotation, or an empty tuple if the
+    annotation is not a union.
+
+    :param annotation: Fully resolved type annotation to test.
+    """
+    if isunion(annotation):
+        return get_args(annotation)
+    else:
+        return ()
 
 
 if typing.TYPE_CHECKING:
