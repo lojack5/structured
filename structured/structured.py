@@ -7,38 +7,46 @@ __all__ = [
 ]
 
 import operator
-from functools import cache, reduce
+from functools import reduce
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
-from .serializers import NullSerializer, Serializer, StructSerializer, AUnion, StructuredSerializer
+from .serializers import (
+    AUnion,
+    NullSerializer,
+    Serializer,
+    StructSerializer,
+    StructuredSerializer,
+)
 from .type_checking import (
     Any,
     BinaryIO,
     Callable,
     ClassVar,
     Generic,
+    Iterable,
     Optional,
     ReadableBuffer,
     Self,
     TypeGuard,
+    UnionType,
     WritableBuffer,
+    cast,
     get_annotations,
     get_args,
     get_origin,
     get_type_hints,
-    isclassvar,
-    update_annotations,
-    Iterable,
     get_union_args,
-    UnionType,
+    isclassvar,
     isunion,
-    cast,
+    update_annotations,
 )
 from .utils import StructuredAlias, attrgetter, zips
 
 
-def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType | Structured]:
+def validate_typehint(
+    attr_type: type,
+) -> TypeGuard[Serializer | UnionType | Structured]:
     """Filter to weed out only annotations which Structured uses to generate
     its serializers.  These are:
     - typing.Annotated with a Serializer as an extra argument
@@ -58,7 +66,12 @@ def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType | Str
     if isinstance(attr_type, Serializer):
         return True
     if isunion(attr_type):
-        return all(map(lambda x: validate_typehint(unwrap_annotated(x)), get_union_args(attr_type)))
+        return all(
+            map(
+                lambda x: validate_typehint(unwrap_annotated(x)),
+                get_union_args(attr_type),
+            )
+        )
     return False
 
 
@@ -123,7 +136,7 @@ def gen_init(
     # Transform types to strings
     args_items = []
     for name, annotation in args.items():
-        if (union_args := get_union_args(annotation)):
+        if union_args := get_union_args(annotation):
             union_text = ', '.join(arg.__name__ for arg in union_args)
             args_items.append(f'{name}: Union[{union_text}]')
         else:
@@ -180,9 +193,10 @@ class Structured:
 
         :param buffer: A bytes-like object.
         """
-        for attr, value in zips(self.attrs, self._serializer(False).unpack(buffer), strict=True):
+        for attr, value in zips(
+            self.attrs, self._serializer(False).unpack(buffer), strict=True
+        ):
             setattr(self, attr, value)
-
 
     def unpack_read(self, readable: BinaryIO) -> None:
         """Read data from a file-like object and unpack it into values, assigned
@@ -190,7 +204,9 @@ class Structured:
 
         :param readable: readable file-like object.
         """
-        for attr, value in zips(self.attrs, self._serializer(False).unpack_read(readable), strict=True):
+        for attr, value in zips(
+            self.attrs, self._serializer(False).unpack_read(readable), strict=True
+        ):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -201,7 +217,9 @@ class Structured:
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zips(self.attrs, self._serializer(False).unpack_from(buffer, offset), strict=True):
+        for attr, value in zips(
+            self.attrs, self._serializer(False).unpack_from(buffer, offset), strict=True
+        ):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:
@@ -417,11 +435,11 @@ class _Proxy:
     create_unpack_*** methods to recieve values, and still allow Union deciders
     to work.
     """
+
     # NOTE: Only using __dunder__ methods, so any attributes on the class this
     # is a proxy for won't be shadowed.
     def __init__(self, attrs: tuple[str, ...]) -> None:
         self.__attrs = attrs
-
 
     def __call__(self, values: Iterable[Any]) -> None:
         for attr, value in zips(self.__attrs, values, strict=True):

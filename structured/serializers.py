@@ -41,7 +41,7 @@ from io import BytesIO
 from itertools import chain, repeat
 from typing import TypeVar, overload
 
-from . import basic_types   # not fully initialized, so cant import from
+from . import basic_types  # not fully initialized, so cant import from
 from .base_types import ByteOrder
 from .type_checking import (
     Any,
@@ -52,11 +52,11 @@ from .type_checking import (
     Iterable,
     ReadableBuffer,
     Self,
+    Ss,
     T,
     Ts,
-    Ss,
-    WritableBuffer,
     Unpack,
+    WritableBuffer,
 )
 
 
@@ -215,7 +215,9 @@ class Serializer(Generic[Unpack[Ts]]):
         """
         return self
 
-    def __add__(self, other: Serializer[Unpack[Ss]]) -> CompoundSerializer[Unpack[Ts], Unpack[Ss]]:
+    def __add__(
+        self, other: Serializer[Unpack[Ss]]
+    ) -> CompoundSerializer[Unpack[Ts], Unpack[Ss]]:
         if isinstance(other, Serializer) and not isinstance(other, NullSerializer):
             # Default is to make a CompoundSerializer joining the two.
             # Subclasses can provide an __radd__ if optimizing can be done
@@ -235,7 +237,9 @@ class NullSerializer(Serializer[Unpack[tuple[()]]]):
     def pack(self, *values: Unpack[tuple[()]]) -> bytes:
         return b''
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[()]]) -> None:
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[()]]
+    ) -> None:
         return
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[()]]) -> None:
@@ -322,7 +326,7 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def unpack_read(self, readable: BinaryIO) -> tuple[Unpack[Ts]]:
         # NOTE: use super-class's unpack to not interfere with custom
         # logic in subclasses
-        return super().unpack(readable.read(self.size)) # type: ignore
+        return super().unpack(readable.read(self.size))  # type: ignore
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[Ts]) -> None:
         # NOTE: Call the super-class's pack, so we don't interfere with
@@ -330,11 +334,15 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         writable.write(super().pack(*values))
 
     @overload
-    def __add__(self, other: StructSerializer[Unpack[Ss]]) -> StructSerializer[Unpack[Ts], Unpack[Ss]]:
+    def __add__(
+        self, other: StructSerializer[Unpack[Ss]]
+    ) -> StructSerializer[Unpack[Ts], Unpack[Ss]]:
         ...
 
     @overload
-    def __add__(self, other: Serializer[Unpack[Ss]]) -> Serializer[Unpack[Ts], Unpack[Ss]]:
+    def __add__(
+        self, other: Serializer[Unpack[Ss]]
+    ) -> Serializer[Unpack[Ts], Unpack[Ss]]:
         ...
 
     def __add__(self, other: Serializer) -> Serializer:
@@ -382,9 +390,10 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
                 return NotImplemented
         else:
             num_values = self.num_values * other
-        fmt = reduce(partial(fold_overlaps, combine_strings=combine_strings), repeat(fmt, other))
+        fmt = reduce(
+            partial(fold_overlaps, combine_strings=combine_strings), repeat(fmt, other)
+        )
         return StructSerializer(fmt, num_values, byte_order)
-
 
 
 class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
@@ -404,21 +413,22 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
         return tuple(
-            action(value)
-            for action, value in zip(self.actions, super().unpack(buffer))
-        )   # type: ignore
+            action(value) for action, value in zip(self.actions, super().unpack(buffer))
+        )  # type: ignore
 
-    def unpack_from(self, buffer: ReadableBuffer, offset: int = ...) -> tuple[Unpack[Ts]]:
+    def unpack_from(
+        self, buffer: ReadableBuffer, offset: int = ...
+    ) -> tuple[Unpack[Ts]]:
         return tuple(
             action(value)
             for action, value in zip(self.actions, super().unpack_from(buffer, offset))
-        )   # type: ignore
+        )  # type: ignore
 
     def unpack_read(self, readable: BinaryIO) -> tuple[Unpack[Ts]]:
         return tuple(
             action(value)
             for action, value in zip(self.actions, super().unpack_read(readable))
-        )   # type: ignore
+        )  # type: ignore
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
         old_byte_order, fmt = self._split_format
@@ -426,7 +436,9 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
             return self
         return StructActionSerializer(fmt, self.num_values, byte_order, self.actions)
 
-    def __add__(self, other: StructSerializer[Unpack[Ss]]) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]:
+    def __add__(
+        self, other: StructSerializer[Unpack[Ss]]
+    ) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]:
         if isinstance(other, StructActionSerializer):
             actions = other.actions
         elif isinstance(other, StructSerializer):
@@ -440,7 +452,9 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         actions = tuple(chain(self.actions, actions))
         return StructActionSerializer(fmt, num_values, byte_order, actions)
 
-    def __radd__(self, other: StructSerializer[Unpack[Ss]]) -> StructActionSerializer[Unpack[Ss], Unpack[Ts]]:
+    def __radd__(
+        self, other: StructSerializer[Unpack[Ss]]
+    ) -> StructActionSerializer[Unpack[Ss], Unpack[Ts]]:
         # NOTE: StructActionSerializer + StructActionSerializer handled by __add__
         if isinstance(other, StructSerializer):
             actions = repeat(noop_action, other.num_values)
@@ -453,7 +467,7 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         actions = tuple(chain(actions, self.actions))
         return StructActionSerializer(fmt, num_values, byte_order, actions)
 
-    def __mul__(self, other: int) -> StructActionSerializer:    # no way to hint this yet
+    def __mul__(self, other: int) -> StructActionSerializer:  # no way to hint this yet
         # TODO: Split into __mul__ and __matmul__?  Probably don't need to,
         # since __matmul__ *should* only be used for bare 's', 'p', and 'x'
         # formats, but might need to in the future if someone wants an action
@@ -480,10 +494,13 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         self.serializers = serializers
         self.size = 0
         self.num_values = sum(serializer.num_values for serializer in serializers)
-        if any(isinstance(serializer, CompoundSerializer) for serializer in serializers):
+        if any(
+            isinstance(serializer, CompoundSerializer) for serializer in serializers
+        ):
             raise TypeError('cannot nest CompoundSerializers')
         self._needs_preprocess = any(
-            ((ts := type(serializer)).prepack, ts.preunpack) != (Serializer.prepack, Serializer.preunpack)
+            ((ts := type(serializer)).prepack, ts.preunpack)
+            != (Serializer.prepack, Serializer.preunpack)
             for serializer in serializers
         )
 
@@ -499,7 +516,9 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         else:
             return _SpecializedCompoundSerializer(self, partial_object)
 
-    def _iter_packers(self, values: tuple[Unpack[Ts]]) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
+    def _iter_packers(
+        self, values: tuple[Unpack[Ts]]
+    ) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
         """Common boilerplate needed for iterating over sub-serializers and
         tracking which values get sent to which, as well as updating the total
         size.
@@ -526,7 +545,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         *values: Unpack[Ts],
     ) -> None:
         for serializer, vals, size in self._iter_packers(values):
-            serializer.pack_into(buffer, offset  + size, *vals)
+            serializer.pack_into(buffer, offset + size, *vals)
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[Ts]) -> None:
         for serializer, vals, _ in self._iter_packers(values):
@@ -560,7 +579,9 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         )
         return CompoundSerializer(serializers)
 
-    def __add__(self, other: Serializer[Unpack[Ss]]) -> CompoundSerializer[Unpack[Ts], Unpack[Ss]]:
+    def __add__(
+        self, other: Serializer[Unpack[Ss]]
+    ) -> CompoundSerializer[Unpack[Ts], Unpack[Ss]]:
         if isinstance(other, CompoundSerializer):
             to_append = list(other.serializers)
         elif isinstance(other, Serializer):
@@ -583,7 +604,9 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
                 serializers[-1] = joined
         return CompoundSerializer(tuple(serializers))
 
-    def __radd__(self, other: Serializer[Unpack[Ss]]) -> CompoundSerializer[Unpack[Ss], Unpack[Ts]]:
+    def __radd__(
+        self, other: Serializer[Unpack[Ss]]
+    ) -> CompoundSerializer[Unpack[Ss], Unpack[Ts]]:
         # NOTE: CompountSerializer + CompoundSerializer will always call __add__
         # so we only need to optimize for Serializer + CompoundSerializer
         if isinstance(other, Serializer):
@@ -594,10 +617,13 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         return self._add_impl(serializers, to_append)
 
 
-class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unpack[Ts]]):
+class _SpecializedCompoundSerializer(
+    Generic[Unpack[Ts]], CompoundSerializer[Unpack[Ts]]
+):
     """CompoundSerializer that will forward a partial_object to sub-serializers,
     and update the size of the originating CompoundSerializer.
     """
+
     def __init__(self, origin: CompoundSerializer, partial_object: Any) -> None:
         self.origin = origin
         self.partial_object = partial_object
@@ -608,7 +634,9 @@ class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unp
     def preprocess(self, partial_object: Any) -> Serializer:
         return self
 
-    def _iter_packers(self, values: tuple[Unpack[Ts]]) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
+    def _iter_packers(
+        self, values: tuple[Unpack[Ts]]
+    ) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
         size = 0
         i = 0
         for serializer in self.serializers:
@@ -632,6 +660,7 @@ class AUnion(Serializer):
     """Base class for union serializers, which are used to determine which
     serializer to use for a given value.
     """
+
     num_values: ClassVar[int] = 1
     result_map: dict[Any, Serializer]
     default: Serializer | None
@@ -655,6 +684,7 @@ class AUnion(Serializer):
     def validate_serializer(serializer) -> Serializer:
         # Need delayed import to avoid circular import
         from .structured import Structured
+
         serializer = basic_types.unwrap_annotated(serializer)
         if isinstance(serializer, type) and issubclass(serializer, Structured):
             serializer = StructuredSerializer(serializer)
@@ -664,7 +694,6 @@ class AUnion(Serializer):
             raise ValueError('Union results must serializer a single item.')
         return serializer
 
-
     @property
     def size(self) -> int:
         if self._last_serializer:
@@ -672,13 +701,17 @@ class AUnion(Serializer):
         else:
             return 0
 
-    def get_serializer(self, decider_result: Any, partial_object: Any, packing: bool) -> Serializer:
+    def get_serializer(
+        self, decider_result: Any, partial_object: Any, packing: bool
+    ) -> Serializer:
         """Given a target used to decide, return a serializer used to unpack."""
         if self.default is None:
             try:
                 serializer = self.result_map[decider_result]
             except KeyError:
-                raise ValueError(f'Union decider returned an unmapped value {decider_result!r}') from None
+                raise ValueError(
+                    f'Union decider returned an unmapped value {decider_result!r}'
+                ) from None
         else:
             serializer = self.result_map.get(decider_result, self.default)
         if packing:
@@ -695,7 +728,13 @@ class LookbackDecider(AUnion):
     decided just prior to packing/unpacking the attribute via inspection of the
     values already unpacked on the object.
     """
-    def __init__(self, decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
+
+    def __init__(
+        self,
+        decider: Callable[[Any], Any],
+        result_map: dict[Any, Any],
+        default: Any = None,
+    ) -> None:
         """result_map should be a mapping of possible return values from `decider`
         to `Annotated` instances with a Serializer as an extra argument.  The
         default should either be `None` to raise an error if the decider returns
@@ -718,9 +757,16 @@ class LookaheadDecider(AUnion):
     """Union serializer that reads ahead into the input stream to determine how
     to unpack the next value.  For packing, a write decider method is used to
     determine how to pack the next value."""
+
     read_ahead_serializer: Serializer
 
-    def __init__(self, read_ahead_serializer: Any, write_decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
+    def __init__(
+        self,
+        read_ahead_serializer: Any,
+        write_decider: Callable[[Any], Any],
+        result_map: dict[Any, Any],
+        default: Any = None,
+    ) -> None:
         super().__init__(result_map, default)
         self.decider = write_decider
         self.read_ahead_serializer = basic_types.unwrap_annotated(read_ahead_serializer)
@@ -752,10 +798,12 @@ def config(decider: AUnion) -> Any:
 
 # Can't import structured here because of circular import, TODO: refactor to
 # avoid this
-TStructured = TypeVar('TStructured', bound='structured.Structured')
+TStructured = TypeVar('TStructured')
+
 
 class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     """Serializer which unpacks a Structured-derived instance."""
+
     num_values: ClassVar[int] = 1
     obj_type: type[TStructured]
 
@@ -769,17 +817,21 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     def pack(self, values: TStructured) -> bytes:
         return values.pack()
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, values: TStructured) -> None:
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, values: TStructured
+    ) -> None:
         values.pack_into(buffer, offset)
 
     def pack_write(self, writable: BinaryIO, values: TStructured) -> None:
         values.pack_write(writable)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack(buffer), )
+        return (self.obj_type.create_unpack(buffer),)
 
-    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack_from(buffer, offset), )
+    def unpack_from(
+        self, buffer: ReadableBuffer, offset: int = 0
+    ) -> tuple[TStructured]:
+        return (self.obj_type.create_unpack_from(buffer, offset),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack_read(readable), )
+        return (self.obj_type.create_unpack_read(readable),)

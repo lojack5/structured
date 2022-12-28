@@ -1,23 +1,36 @@
 """
 Various utility methods.
 """
-import sys
 import operator
+import sys
 import warnings
 from functools import wraps
 
 from .type_checking import Any, Callable, NoReturn, Optional, ParamSpec, T, TypeVar
 
-
 if sys.version_info < (3, 10):
-    from .type_checking import S, overload, Iterable
+    from .type_checking import Iterable, S, overload
+
     @overload
-    def zips(iterable1: Iterable[S], *, strict: bool = ...) -> Iterable[tuple[S]]: ...
+    def zips(iterable1: Iterable[S], *, strict: bool = ...) -> Iterable[tuple[S]]:
+        ...
+
     @overload
-    def zips(iterable1: Iterable[S], iterable2: Iterable[T], *, strict: bool = ...) -> Iterable[tuple[S, T]]: ...
+    def zips(  # noqa: F811
+        iterable1: Iterable[S], iterable2: Iterable[T], *, strict: bool = ...
+    ) -> Iterable[tuple[S, T]]:
+        ...
+
     @overload
-    def zips(iterable1: Iterable[Any], iterable2: Iterable[Any], *iterables: Iterable[Any], strict: bool = ...) -> Iterable[tuple[Any, ...]]: ...
-    def zips(*iterables: Iterable, strict: bool = False):   # type: ignore
+    def zips(  # noqa: F811
+        iterable1: Iterable[Any],
+        iterable2: Iterable[Any],
+        *iterables: Iterable[Any],
+        strict: bool = ...,
+    ) -> Iterable[tuple[Any, ...]]:
+        ...
+
+    def zips(*iterables: Iterable, strict: bool = False):  # noqa: F811
         """Python 3.9 compatible way of emulating zip(..., strict=True)"""
         if not strict:
             yield from zip(*iterables)
@@ -32,6 +45,7 @@ if sys.version_info < (3, 10):
                     pass
                 else:
                     raise ValueError('iterables must be of equal length')
+
 else:
     zips = zip
 

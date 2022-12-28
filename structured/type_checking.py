@@ -20,22 +20,23 @@ from typing import (
     get_origin,
     get_type_hints,
     overload,
-    Union,
 )
 
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec, TypeAlias, TypeGuard
-    UnionType = Union
+
+    union_types = (Union,)
 else:
     from types import UnionType
     from typing import ParamSpec, TypeAlias, TypeGuard
+
     union_types = (Union, UnionType)
 
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Self, dataclass_transform, TypeVarTuple, Unpack
+    from typing_extensions import Self, TypeVarTuple, Unpack, dataclass_transform
 else:
-    from typing import Self, dataclass_transform, TypeVarTuple, Unpack
+    from typing import Self, TypeVarTuple, Unpack, dataclass_transform
 
 
 S = TypeVar('S')
@@ -71,12 +72,12 @@ def isclassvar(annotation: Any) -> bool:
     return get_origin(annotation) is ClassVar
 
 
-def isunion(annotation: Any):   # type: TypeGuard[UnionType]
+def isunion(annotation: Any):  # type: TypeGuard[UnionType]
     """Determine if a type annotation is a union.
 
     :param annotation: Fully resolved type annotation to test.
     """
-    return get_origin(annotation) in (Union, UnionType)
+    return get_origin(annotation) in union_types
 
 
 def get_union_args(annotation: Any) -> tuple[Any, ...]:
