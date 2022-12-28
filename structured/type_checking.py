@@ -11,6 +11,7 @@ from typing import (
     Container,
     Generic,
     Iterable,
+    NewType,
     NoReturn,
     Optional,
     TypeVar,
@@ -25,6 +26,7 @@ from typing import (
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec, TypeAlias, TypeGuard
 
+    UnionType = NewType('UnionType', object)  # needed for TypeGuard on 3.9
     union_types = (Union,)
 else:
     from types import UnionType
@@ -72,7 +74,7 @@ def isclassvar(annotation: Any) -> bool:
     return get_origin(annotation) is ClassVar
 
 
-def isunion(annotation: Any):  # type: TypeGuard[UnionType]
+def isunion(annotation: Any) -> TypeGuard[UnionType]:
     """Determine if a type annotation is a union.
 
     :param annotation: Fully resolved type annotation to test.

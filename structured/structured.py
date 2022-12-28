@@ -29,6 +29,7 @@ from .type_checking import (
     ReadableBuffer,
     Self,
     TypeGuard,
+    Union,
     UnionType,
     WritableBuffer,
     cast,
@@ -46,7 +47,7 @@ from .utils import StructuredAlias, attrgetter, zips
 
 def validate_typehint(
     attr_type: type,
-) -> TypeGuard[Serializer | UnionType | Structured]:
+) -> TypeGuard[Union[Serializer, Structured, UnionType]]:
     """Filter to weed out only annotations which Structured uses to generate
     its serializers.  These are:
     - typing.Annotated with a Serializer as an extra argument
@@ -77,7 +78,7 @@ def validate_typehint(
 
 def filter_typehints(
     typehints: dict[str, Any],
-) -> dict[str, Serializer | UnionType | Structured]:
+) -> dict[str, Union[Serializer, Structured, UnionType]]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
