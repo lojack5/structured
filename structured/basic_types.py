@@ -63,8 +63,9 @@ class counted(requires_indexing):
     value_type: ClassVar[type]
 
     def __class_getitem__(cls, count: int) -> Annotated:
-        # Not sure why pylance reports cls as having no member `value_type`
-        return Annotated[cls.value_type, cls.serializer * count]  # type: ignore
+        # Use matrix multiplication operator, to fold in strings,
+        # ie 's' @ 2 -> '2s', whereas 's' * 2 -> 'ss'
+        return Annotated[cls.value_type, cls.serializer @ count]  # type: ignore
 
 
 class pad(counted):

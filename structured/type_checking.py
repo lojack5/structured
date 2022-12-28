@@ -11,6 +11,7 @@ from typing import (
     Container,
     Generic,
     Iterable,
+    NewType,
     NoReturn,
     Optional,
     TypeVar,
@@ -19,21 +20,31 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec, TypeAlias, TypeGuard
+
+    UnionType = NewType('UnionType', object)  # needed for TypeGuard on 3.9
+    union_types = (Union,)
 else:
+    from types import UnionType
     from typing import ParamSpec, TypeAlias, TypeGuard
 
+    union_types = (Union, UnionType)
+
+
 if sys.version_info < (3, 11):
-    from typing_extensions import Self, dataclass_transform
+    from typing_extensions import Self, TypeVarTuple, Unpack, dataclass_transform
 else:
-    from typing import Self, dataclass_transform
+    from typing import Self, TypeVarTuple, Unpack, dataclass_transform
 
 
 S = TypeVar('S')
 T = TypeVar('T')
+Ts = TypeVarTuple('Ts')
+Ss = TypeVarTuple('Ss')
 
 
 def update_annotations(cls: type, annotations: dict[str, Any]) -> None:
@@ -61,6 +72,26 @@ def isclassvar(annotation: Any) -> bool:
     :param annotation: Fully resolved type annotation to test.
     """
     return get_origin(annotation) is ClassVar
+
+
+def isunion(annotation: Any) -> TypeGuard[UnionType]:
+    """Determine if a type annotation is a union.
+
+    :param annotation: Fully resolved type annotation to test.
+    """
+    return get_origin(annotation) in union_types
+
+
+def get_union_args(annotation: Any) -> tuple[Any, ...]:
+    """Get the arguments of a union type annotation, or an empty tuple if the
+    annotation is not a union.
+
+    :param annotation: Fully resolved type annotation to test.
+    """
+    if isunion(annotation):
+        return get_args(annotation)
+    else:
+        return ()
 
 
 if typing.TYPE_CHECKING:

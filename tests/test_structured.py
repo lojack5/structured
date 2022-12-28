@@ -243,6 +243,32 @@ class TestStructured:
         assert a != d
         assert a != e
 
+    def test_structured_hint(self) -> None:
+        class Inner(Structured):
+            a: uint32
+            b: char[4]
+
+        class Outer(Structured):
+            a: uint32
+            b: Inner
+
+        a = Outer(1, Inner(2, b'abcd'))
+        test_data = struct.pack('2I4s', 1, 2, b'abcd')
+
+        assert a.pack() == test_data
+        assert Outer.create_unpack(test_data) == a
+
+        buffer = bytearray(len(test_data))
+        a.pack_into(buffer)
+        assert bytes(buffer) == test_data
+        assert Outer.create_unpack_from(buffer) == a
+
+        with io.BytesIO() as stream:
+            a.pack_write(stream)
+            assert stream.getvalue() == test_data
+            stream.seek(0)
+            assert Outer.create_unpack_read(stream) == a
+
 
 def test_fold_overlaps() -> None:
     # Test the branch not exercised by the above tests.

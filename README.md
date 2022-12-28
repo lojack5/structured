@@ -111,6 +111,18 @@ class MyInt:
 
 As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.  For `bytes` wrappers, unfortunately `struct` does not call `__bytes__` on the unerlying object.  Your options in that case are to base your class on `bytes` (forcing it to be immutable), or to write a `Serializer` for it.  You can take a look at `complex_types/strings.py` for some ideas on how to do that.
 
+If your type is more complicated, you can define a `Structured` derived class for it, then hint with that class:
+
+```python
+class MyItem(Structured):
+  a: uint32
+  b: float32
+
+class MyStruct(Structured):
+  sig: char[4]
+  item: MyItem
+```
+
 ### Extending
 `Structured` classes can be extended to create a new class with additional, modified, or removed attributes.  If you annotate an attribute already in the base class, it will change its format specifier to the new type.  This can be used for example, to remove an attribute from the struct packing/unpacking by annotating it with a python type rather than one of the provided types.
 
@@ -152,10 +164,7 @@ format_size = MyStruct.serializer.size
 
 You can also access the `attrs` class attribute, which is the attribute names handled by the class's serializer, in the order they are packed/unpacked.
 
-For more advanced work, it is recommended to rework your class layout, or write your own custom `Serializer` class and annotate your types with it (See: structured/base_types.py for more information on the Serializer API).  In the case this is still not enough, you have access to two builder methods:
-
-- `structured.create_serializer`: This is used internally to create the serializers on the classes themselves.  You can call it with a typehints dictionary, and a byte order to use.  You can optionally pass in a second typhints-like dictionary to override anything in the typehints dictionary (this is only used in class creation, it should not be necessary in most cases).  The method returns back a `Serializer` instance, along with a tuple of attribute names the serializer packs and unpacks.
-- `Structured.create_attribute_serializer`: You can call this with attribute names on a `Structured` class to get a serializer which can pack and unpack the given attributes on the class.  Note that at the moment there is little sanity checking.  The resulting serializer will be set up to pack/unpack the given attributes *in the order they are defined on the class*.  Any gaps in the attribute layout are up to you to handle.
+For more advanced work, it is recommended to rework your class layout, or write your own custom `Serializer` class and annotate your types with it (See: structured/base_types.py for more information on the Serializer API).
 
 In the instance you find yourself working with a common pattern that is not handled easily by the built in features of `structured`, feel free to open a feature request!
 
@@ -177,6 +186,7 @@ Structured also supports a few more complex types that require extra logic to pa
 - `char`: For unpacking binary blobs whose size is not static, but determined by data just prior to the blob (yes, it's also a basic type).
 - `unicode`: For strings, automatically encoding for packing and decoding for unpacking.
 - `array`: For unpacking multiple instances of a single type.  The number to unpack may be static or, like `blob`, determined by data just prior to the array.
+- Unions: For types that could unpack as many different types, depending on certain conditions.
 
 
 ### String types
@@ -213,6 +223,43 @@ class MyItem(Structured):
 class MyStruct(Structured):
   ten_items: array[Header[10, uint32], MyItem]
 ```
+
+### Unions
+Sometimes, the data structure you're packing/unpacking depends on certain conditions.  Maybe a `uint8` is used to indicate what follows next.  In cases like this, `Structured` supports unions in its typehints.  To hint for this, you need two things:
+1. Every type in your union must be a serializable type (either one of the provided types, or a `Structured` derived class)
+2. You need to configure how to decide which type to unpack/pack as, with a decider.
+
+#### Deciders
+All deciders provide some method to take in information and produce a value to be used to make a dicision.  The decision is made with a "decision map", which is a mapping of value to serialization types.  You can also provide a default serialization type, or `None` if you want an error to be raised if your decision method doesn't produce a value in the decision map.
+
+For `LookbackDecider`, you provide a method that accepts an object, and produces a value.  The object will be a `Structured`-like object with all currently unpacked values set to the applicable attributes (in some cases, this actually *is* the `Structured` object being packed/unpacked).  A common method to use for this decider is `operator.attrgetter`.
+
+For `LookaheadDecider`, the functionality differs between packing and unpacking.  For unpacking, you must specify a serializable type that will be unpacked first, then sent to the decision map.  For packing, you must provide a write deciding method, which acts in the same was as `LookbackDecider`'s decision method.
+
+Here are a few examples:
+```python
+class MyStruct(Structured):
+  a_type: uint8
+  a: uint32 | float32 | char[4] = config(LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4]))
+```
+This example first unpacks a `uint8` and stores it in `a_type`.  The union `a` polls that value with `attrgetter`, if the value is 0 it unpacks a `uint32` for `a`.  If the value is 1, it unpacks a `float32`, and if it is anything else it unpacks just 4 bytes (raw data).
+
+```python
+class IntRecord(Structured):
+  sig: char[4]
+  value: int32
+
+class FloatRecord(Structured):
+  sig: char[4]
+  value: float32
+
+class MyStruct(Structured):
+  record: IntRecord | FloatRecord = config(LookaheadDecider(char[4], attrgetter('record.sig'), {b'IIII': IntRecord, 'FFFF': FloatRecord}, None))
+```
+For unpacking, this example first reads in 4 bytes (`char[4]`), then looks up that value in the dictionary.  If it was `b'IIII'`, then it rewinds and unpacks an `IntRecord` (note: `IntRecord`'s `sig` attribute will be set to `char[4]`.)  If it was `b'FFFF'` it rewinds and unpacks a `FloatRecord`, and if was neither it raises an exception.
+
+For packing, this example uses `attrgetter('record.sig')` on the object to decide how to pack it.
+
 
 
 ## Notes of type checkers / IDEs
