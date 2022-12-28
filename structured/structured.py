@@ -11,7 +11,7 @@ from functools import cache, reduce
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
-from .serializers import NullSerializer, Serializer, StructSerializer, UnionSerializer
+from .serializers import NullSerializer, Serializer, StructSerializer, AUnion, StructuredSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -38,7 +38,7 @@ from .type_checking import (
 from .utils import StructuredAlias, attrgetter, zips
 
 
-def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType]:
+def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType | Structured]:
     """Filter to weed out only annotations which Structured uses to generate
     its serializers.  These are:
     - typing.Annotated with a Serializer as an extra argument
@@ -50,8 +50,11 @@ def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType]:
     """
     if isclassvar(attr_type):
         return False
-    if isinstance(attr_type, type) and issubclass(attr_type, requires_indexing):
-        raise TypeError(f'{attr_type.__qualname__} must be specialized')
+    if isinstance(attr_type, type):
+        if issubclass(attr_type, requires_indexing):
+            raise TypeError(f'{attr_type.__qualname__} must be specialized')
+        if issubclass(attr_type, Structured):
+            return True
     if isinstance(attr_type, Serializer):
         return True
     if isunion(attr_type):
@@ -61,7 +64,7 @@ def validate_typehint(attr_type: type) -> TypeGuard[Serializer | UnionType]:
 
 def filter_typehints(
     typehints: dict[str, Any],
-) -> dict[str, Serializer | UnionType]:
+) -> dict[str, Serializer | UnionType | Structured]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
@@ -117,10 +120,16 @@ def gen_init(
     if localsns is None:
         localsns = {}
     local_vars = ', '.join(localsns.keys())
+    # Transform types to strings
+    args_items = []
+    for name, annotation in args.items():
+        if (union_args := get_union_args(annotation)):
+            union_text = ', '.join(arg.__name__ for arg in union_args)
+            args_items.append(f'{name}: Union[{union_text}]')
+        else:
+            args_items.append(f'{name}: {annotation.__name__}')
     # Inner function text
-    args_txt = ', '.join(
-        f'{name}: {annotation.__name__}' for name, annotation in args.items()
-    )
+    args_txt = ', '.join(args_items)
     def_txt = f' def __init__({args_txt}) -> None:'
     body_lines = [f'  self.{name} = {name}' for name in args.keys() if name != 'self']
     body_lines.append('  self.__post_init__()')
@@ -160,15 +169,18 @@ class Structured:
         return new_obj
 
     # General packers/unpackers
-    def _serializer(self) -> Serializer:
-        return self.serializer.preprocess(self)
+    def _serializer(self, packing: bool) -> Serializer:
+        if packing:
+            return self.serializer.prepack(self)
+        else:
+            return self.serializer.preunpack(self)
 
     def unpack(self, buffer: ReadableBuffer) -> None:
         """Unpack values from the bytes-like `buffer` and assign them to members
 
         :param buffer: A bytes-like object.
         """
-        for attr, value in zips(self.attrs, self._serializer().unpack(buffer), strict=True):
+        for attr, value in zips(self.attrs, self._serializer(False).unpack(buffer), strict=True):
             setattr(self, attr, value)
 
 
@@ -178,7 +190,7 @@ class Structured:
 
         :param readable: readable file-like object.
         """
-        for attr, value in zips(self.attrs, self._serializer().unpack_read(readable), strict=True):
+        for attr, value in zips(self.attrs, self._serializer(False).unpack_read(readable), strict=True):
             setattr(self, attr, value)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> None:
@@ -189,12 +201,12 @@ class Structured:
         :param buffer: buffer to unpack from.
         :param offset: position in the buffer to start from.
         """
-        for attr, value in zips(self.attrs, self._serializer().unpack_from(buffer, offset), strict=True):
+        for attr, value in zips(self.attrs, self._serializer(False).unpack_from(buffer, offset), strict=True):
             setattr(self, attr, value)
 
     def pack(self) -> bytes:
         """Pack the class's values according to the format string."""
-        return self._serializer().pack(*type(self)._attrgetter(self))
+        return self._serializer(True).pack(*type(self)._attrgetter(self))
 
     def pack_write(self, writable: BinaryIO) -> None:
         """Pack the class's values according to the format string, then write
@@ -202,7 +214,7 @@ class Structured:
 
         :param writable: writable file-like object.
         """
-        self._serializer().pack_write(writable, *type(self)._attrgetter(self))
+        self._serializer(True).pack_write(writable, *type(self)._attrgetter(self))
 
     def pack_into(self, buffer: WritableBuffer, offset: int = 0):
         """Pack the class's values according to the format string, pkacing the
@@ -211,7 +223,7 @@ class Structured:
         :param stream: buffer to pack into.
         :param offset: position in the buffer to start writing data to.
         """
-        self._serializer().pack_into(buffer, offset, *type(self)._attrgetter(self))
+        self._serializer(True).pack_into(buffer, offset, *type(self)._attrgetter(self))
 
     # Creation of objects from unpackable types
     @classmethod
@@ -220,7 +232,7 @@ class Structured:
         new instances of this class.
         """
         proxy = _Proxy(cls.attrs)
-        return proxy, cls.serializer.preprocess(proxy)
+        return proxy, cls.serializer.preunpack(proxy)
 
     @classmethod
     def create_unpack(cls, buffer: ReadableBuffer) -> Self:
@@ -258,40 +270,6 @@ class Structured:
         proxy, serializer = cls._create_proxy()
         proxy(serializer.unpack_read(readable))
         return cls(*proxy)
-
-    @classmethod
-    @cache
-    def create_attribute_serializer(
-        cls, *attributes: str
-    ) -> tuple[Serializer, tuple[str, ...]]:
-        """Create a serializer for handling just the given attributes.  This may
-        be as simple as returning the default serializer, or returning a sub
-        serializer in a CompoundSerializer.  Otherwise, a new one will have to
-        be created.
-
-        :return: A serializer suitable for packing/unpacking the given
-            attributes.
-        """
-        attrs = set(attributes)
-        num_requested = len(attrs)
-        num_attrs = len(cls.attrs)
-        if num_requested < num_attrs:
-            # TODO: Say which ones
-            raise AttributeError('Attributes specified multiple times.')
-        if unhandled := attrs - set(cls.attrs):
-            raise AttributeError(
-                'Cannot serialize the following attributes:\n'
-                f'{unhandled}\n'
-                'If they are meant to be serailized, make sure to annotate '
-                'them appropriately.'
-            )
-        hints = filter_typehints(get_type_hints(cls, include_extras=True))
-        hints = {attr: hint for attr, hint in hints.items() if attr in attrs}
-        serializer = sum(hints.values(), NullSerializer()).with_byte_order(
-            cls.byte_order
-        )
-        attrs = tuple(hints.keys())
-        return serializer, attrs
 
     def __str__(self) -> str:
         """Descriptive representation of this class."""
@@ -352,14 +330,17 @@ class Structured:
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
         applicable_typehints = filter_typehints(typehints)
-        # Handle types that need more information from the classdict
+        # Handle types that need more information from the classdict / transforming
         for attr in applicable_typehints:
-            if isunion(applicable_typehints[attr]):
+            hint = applicable_typehints[attr]
+            if isunion(hint):
                 serializer = getattr(cls, attr, None)
-                if isinstance(serializer, UnionSerializer):
+                if isinstance(serializer, AUnion):
                     applicable_typehints[attr] = serializer
                 else:
                     raise ValueError('Union types must be configured')
+            elif isinstance(hint, type) and issubclass(hint, Structured):
+                applicable_typehints[attr] = StructuredSerializer(hint)
         # All values are now Serializers
         applicable_typehints = cast(dict[str, Serializer], applicable_typehints)
         # Which variables show up in the __init__

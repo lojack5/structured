@@ -11,7 +11,7 @@ on struct.Struct) support multiplication by an integer.
 
 The Serializer API is almost identical to struct.Struct, with a few additions
 and one alteration:
- - New method 'preprocess'.
+ - New methods 'prepack' and 'preunpack'.
  - New attribute `num_values`.
  - New unpacking method `unpack_read`.
  - New packing method `pack_read`.
@@ -28,10 +28,12 @@ __all__ = [
     'StructSerializer',
     'StructActionSerializer',
     'CompoundSerializer',
-    'UnionSerializer',
+    'LookbackDecider',
+    'LookaheadDecider',
     'config',
 ]
 
+import os
 import re
 import struct
 from functools import cached_property, partial, reduce
@@ -120,8 +122,20 @@ class Serializer(Generic[Unpack[Ts]]):
     the number of varialbes required for a pack operation.
     """
 
-    def preprocess(self, partial_object: Any) -> Serializer:
-        """Perform any state logic needed just prior to an pack/unpack operation
+    def prepack(self, partial_object: Any) -> Serializer:
+        """Perform any state logic needed just prior to a pack operation on
+        `partial_object`. The object will be a fully initialized instance
+        for pack operations, but only a proxy object for unpack operations.
+        Durin unpacking, only the attributes unpacked before this serializer are
+        set on the object.
+
+        :param partial_object: The object being packed or unpacked.
+        :return: A serializer appropriate for unpacking the next attribute(s).
+        """
+        return self
+
+    def preunpack(self, partial_object: Any) -> Serializer:
+        """Perform any state logic needed just prior to an unpack operation
         on `partial_object`. The object will be a fully initialized instance
         for pack operations, but only a proxy object for unpack operations.
         Durin unpacking, only the attributes unpacked before this serializer are
@@ -468,7 +482,16 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         self.num_values = sum(serializer.num_values for serializer in serializers)
         if any(isinstance(serializer, CompoundSerializer) for serializer in serializers):
             raise TypeError('cannot nest CompoundSerializers')
-        self._needs_preprocess = any(type(serializer).preprocess is not Serializer.preprocess for serializer in serializers)
+        self._needs_preprocess = any(
+            ((ts := type(serializer)).prepack, ts.preunpack) != (Serializer.prepack, Serializer.preunpack)
+            for serializer in serializers
+        )
+
+    def prepack(self, partial_object: Any) -> Serializer:
+        return self.preprocess(partial_object)
+
+    def preunpack(self, partial_object: Any) -> Serializer:
+        return self.preprocess(partial_object)
 
     def preprocess(self, partial_object: Any) -> Serializer:
         if not self._needs_preprocess:
@@ -590,7 +613,7 @@ class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unp
         i = 0
         for serializer in self.serializers:
             count = serializer.num_values
-            yield serializer.preprocess(self.partial_object), values[i : i + count], size
+            yield serializer.prepack(self.partial_object), values[i : i + count], size
             size += serializer.size
             i += count
         self.size = size
@@ -599,21 +622,79 @@ class _SpecializedCompoundSerializer(Generic[Unpack[Ts]], CompoundSerializer[Unp
     def _iter_unpackers(self) -> Iterable[tuple[Serializer, int]]:
         size = 0
         for serializer in self.serializers:
-            yield serializer.preprocess(self.partial_object), size
+            yield serializer.preunpack(self.partial_object), size
             size += serializer.size
         self.size = size
         self.origin.size = size
 
 
-class UnionSerializer(Serializer):
+class AUnion(Serializer):
+    """Base class for union serializers, which are used to determine which
+    serializer to use for a given value.
+    """
+    num_values: ClassVar[int] = 1
+    result_map: dict[Any, Serializer]
+    default: Serializer | None
+    _last_serializer: Serializer | None
+
+    def __init__(self, result_map: dict[Any, Any], default: Any = None) -> None:
+        """result_map should be a mapping of possible return values from `decider`
+        to `Annotated` instances with a Serializer as an extra argument.  The
+        default should either be `None` to raise an error if the decider returns
+        an unmapped value, or an `Annotated` instance with a Serializer as an
+        extra argument.
+        """
+        self.default = None if not default else self.validate_serializer(default)
+        self.result_map = {
+            key: self.validate_serializer(serializer)
+            for key, serializer in result_map.items()
+        }
+        self._last_serializer = self.default
+
+    @staticmethod
+    def validate_serializer(serializer) -> Serializer:
+        # Need delayed import to avoid circular import
+        from .structured import Structured
+        serializer = basic_types.unwrap_annotated(serializer)
+        if isinstance(serializer, type) and issubclass(serializer, Structured):
+            serializer = StructuredSerializer(serializer)
+        if not isinstance(serializer, Serializer):
+            raise TypeError('Union results must be serializable types.')
+        elif serializer.num_values != 1:
+            raise ValueError('Union results must serializer a single item.')
+        return serializer
+
+
+    @property
+    def size(self) -> int:
+        if self._last_serializer:
+            return self._last_serializer.size
+        else:
+            return 0
+
+    def get_serializer(self, decider_result: Any, partial_object: Any, packing: bool) -> Serializer:
+        """Given a target used to decide, return a serializer used to unpack."""
+        if self.default is None:
+            try:
+                serializer = self.result_map[decider_result]
+            except KeyError:
+                raise ValueError(f'Union decider returned an unmapped value {decider_result!r}') from None
+        else:
+            serializer = self.result_map.get(decider_result, self.default)
+        if packing:
+            serializer = serializer.prepack(partial_object)
+        else:
+            serializer = serializer.preunpack(partial_object)
+        self._last_serializer = serializer
+        return self._last_serializer
+
+
+class LookbackDecider(AUnion):
     # NOTE: Union types are not allowed in TypeVarTuples, so we can't hint this
     """Serializer to handle loading of attributes with multiple types, type is
-    decided just prior to packing/unpacking the attribute.
+    decided just prior to packing/unpacking the attribute via inspection of the
+    values already unpacked on the object.
     """
-    default: Serializer
-    result_map: dict[Any, Serializer]
-    num_values: ClassVar[int] = 1
-
     def __init__(self, decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
         """result_map should be a mapping of possible return values from `decider`
         to `Annotated` instances with a Serializer as an extra argument.  The
@@ -621,42 +702,84 @@ class UnionSerializer(Serializer):
         an unmapped value, or an `Annotated` instance with a Serializer as an
         extra argument.
         """
-        self.decide = decider
-        self.default = basic_types.unwrap_annotated(default)
-        self.result_map = {
-            key: basic_types.unwrap_annotated(serializer)
-            for key, serializer in result_map.items()
-        }
-        # Check types
-        if self.default is not None:
-            if not isinstance(self.default, Serializer) and self.default is not None:
-                raise TypeError('default must be a Serializer')
-            elif self.default.num_values != 1:
-                raise ValueError('default must unpack a single value')
-        for serializer in self.result_map.values():
-            if not isinstance(serializer, Serializer):
-                raise TypeError('result_map values must be Serializers')
-            elif serializer.num_values != 1:
-                raise ValueError('result_map values must unpack a single value')
-        self._last_serializer = self.default
+        super().__init__(result_map, default)
+        self.decider = decider
+
+    def prepack(self, partial_object: Any) -> Serializer:
+        result = self.decider(partial_object)
+        return self.get_serializer(result, partial_object, True)
+
+    def preunpack(self, partial_object: Any) -> Serializer:
+        result = self.decider(partial_object)
+        return self.get_serializer(result, partial_object, False)
+
+
+class LookaheadDecider(AUnion):
+    """Union serializer that reads ahead into the input stream to determine how
+    to unpack the next value.  For packing, a write decider method is used to
+    determine how to pack the next value."""
+    read_ahead_serializer: Serializer
+
+    def __init__(self, read_ahead_serializer: Any, write_decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any = None) -> None:
+        super().__init__(result_map, default)
+        self.decider = write_decider
+        self.read_ahead_serializer = basic_types.unwrap_annotated(read_ahead_serializer)
+        if not isinstance(self.read_ahead_serializer, Serializer):
+            raise TypeError('read_ahead_serializer must be a Serializer')
+
+    def prepack(self, partial_object: Any) -> Serializer:
+        result = self.decider(partial_object)
+        return self.get_serializer(result, partial_object, True)
+
+    def unpack(self, buffer: ReadableBuffer) -> Iterable:
+        result = tuple(self.read_ahead_serializer.unpack(buffer))[0]
+        return self.get_serializer(result, None, False).unpack(buffer)
+
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
+        result = tuple(self.read_ahead_serializer.unpack_from(buffer, offset))[0]
+        return self.get_serializer(result, None, False).unpack_from(buffer, offset)
+
+    def unpack_read(self, readable: BinaryIO) -> Iterable:
+        result = tuple(self.read_ahead_serializer.unpack_read(readable))[0]
+        readable.seek(-self.read_ahead_serializer.size, os.SEEK_CUR)
+        return self.get_serializer(result, None, False).unpack_read(readable)
+
+
+def config(decider: AUnion) -> Any:
+    """Type erasing method for configuring Union types with a UnionSerializer"""
+    return decider
+
+
+# Can't import structured here because of circular import, TODO: refactor to
+# avoid this
+TStructured = TypeVar('TStructured', bound='structured.Structured')
+
+class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
+    """Serializer which unpacks a Structured-derived instance."""
+    num_values: ClassVar[int] = 1
+    obj_type: type[TStructured]
+
+    def __init__(self, obj_type: type[TStructured]) -> None:
+        self.obj_type = obj_type
 
     @property
     def size(self) -> int:
-        return self._last_serializer.size
+        return self.obj_type.serializer.size
 
-    def preprocess(self, partial_object: Any) -> Serializer:
-        result = self.decide(partial_object)
-        if self.default is None:
-            try:
-                serializer = self.result_map[result]
-            except KeyError:
-                raise ValueError(f'Union decider {self.decide!r} returned an unmapped value {result!r}') from None
-        else:
-            serializer = self.result_map.get(result, self.default)
-        self._last_serializer = serializer.preprocess(partial_object)
-        return self._last_serializer
+    def pack(self, values: TStructured) -> bytes:
+        return values.pack()
 
+    def pack_into(self, buffer: WritableBuffer, offset: int, values: TStructured) -> None:
+        values.pack_into(buffer, offset)
 
-def config(decider: Callable[[Any], Any], result_map: dict[Any, Any], default: Any) -> Any:
-    """Type erasing method for configuring Union types with a UnionSerializer"""
-    return UnionSerializer(decider, result_map, default)
+    def pack_write(self, writable: BinaryIO, values: TStructured) -> None:
+        values.pack_write(writable)
+
+    def unpack(self, buffer: ReadableBuffer) -> tuple[TStructured]:
+        return (self.obj_type.create_unpack(buffer), )
+
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[TStructured]:
+        return (self.obj_type.create_unpack_from(buffer, offset), )
+
+    def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
+        return (self.obj_type.create_unpack_read(readable), )
