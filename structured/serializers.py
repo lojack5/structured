@@ -67,7 +67,9 @@ def noop_action(x: T) -> T:
     return x
 
 
-_reOverlap: re.Pattern[str] = re.compile(r'(.*?)(\d+)\D$')
+_struct_chars = r'xcbB\?hHiIlLqQnNefdspP'
+_re_end: re.Pattern[str] = re.compile(rf'(.*?)(\d*)([{_struct_chars}])$')
+_re_start: re.Pattern[str] = re.compile(rf'^(\d*)([{_struct_chars}])(.*?)')
 
 
 def fold_overlaps(format1: str, format2: str, combine_strings: bool = False) -> str:
@@ -83,20 +85,16 @@ def fold_overlaps(format1: str, format2: str, combine_strings: bool = False) -> 
         return format2
     elif not format2:
         return format1
-    if (overlap := format1[-1]) == format2[0] and (
-        combine_strings or overlap not in ('s', 'p')
-    ):
-        if match := _reOverlap.match(format1):
-            prelude, count = match.groups()
-            count = int(count)
-        else:
-            prelude = format1[:-1]
-            count = 1
-        count += 1
-        format = f'{prelude}{count}{overlap}{format2[1:]}'
-    else:
-        format = format1 + format2
-    return format
+    start2 = _re_start.match(format2)
+    end1 = _re_end.match(format1)
+    if start2 and end1:
+        prelude, count1, overlap1 = end1.groups()
+        count2, overlap2, epilogue = start2.groups()
+        if overlap1 == overlap2 and (combine_strings or overlap1 not in ('s', 'p')):
+            count1 = int(count1) if count1 else 1
+            count2 = int(count2) if count2 else 1
+            return f'{prelude}{count1 + count2}{overlap1}{epilogue}'
+    return format1 + format2
 
 
 def split_byte_order(format: str) -> tuple[ByteOrder, str]:

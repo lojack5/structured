@@ -8,6 +8,7 @@ __all__ = [
 
 import operator
 from functools import reduce
+from itertools import count
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
 from .basic_types import ispad, unwrap_annotated
@@ -25,6 +26,7 @@ from .type_checking import (
     ClassVar,
     Generic,
     Iterable,
+    Iterator,
     Optional,
     ReadableBuffer,
     Self,
@@ -158,7 +160,34 @@ def gen_init(
     return namespace['__create_fn__'](**localsns)
 
 
-class Structured:
+class MetaDict(dict):
+    """Dictionary which assigns unique names for variables named `_` and
+    annotated with `pad`.
+    """
+
+    _unique_id: ClassVar[Iterator[int]] = count()
+
+    def __setitem__(self, key, value):
+        if key == '_' and ispad(value):
+            # Generate a unique name, we'll use ones that are invalid attribute
+            # names so they won't accidentally overwrite anything a use sets.
+            key = f'{next(self._unique_id)}_pad_'
+        super().__setitem__(key, value)
+
+
+class StructuredMeta(type):
+    """Metaclass that simply sets the annotations dict to one that automatically
+    renames `_` variables annotated with a `pad` to unique names.
+    """
+
+    def __prepare__(cls, bases, **kwargs):
+        namespace = {
+            '__annotations__': MetaDict(),
+        }
+        return namespace
+
+
+class Structured(metaclass=StructuredMeta):
     """Base class for classes which can be packed/unpacked using Python's
     struct module."""
 

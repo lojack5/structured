@@ -9,6 +9,19 @@ from structured import *
 
 
 class TestStructured:
+    def test_multiple_pad(self) -> None:
+        class Base(Structured):
+            _ : pad[1]
+            _ : pad[3]
+            _ : pad[4]
+        assert isinstance(Base.serializer, struct.Struct)
+        assert Base.serializer.format == '8x'
+
+        class Derived(Base):
+            _ : pad[2]
+        assert isinstance(Derived.serializer, struct.Struct)
+        assert Derived.serializer.format == '10x'
+
     def test_init__(self) -> None:
         class Base(Structured):
             a: int8
