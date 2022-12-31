@@ -11,6 +11,7 @@ from typing import (
     Container,
     Generic,
     Iterable,
+    Iterator,
     NewType,
     NoReturn,
     Optional,

@@ -46,7 +46,7 @@ Notes:
  1. These type must be indexed to specify their length.  For a single byte `char` for example (`'s'`), use `char[1]`.
  2. The 16-bit float type is not supported on all platforms.
  3. `struct` treats `bool` as an `int`, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
- 4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.
+ 4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.  There is a special metaclass hook to allow you to name all of your pad variables `_`, and they still **all** count towards the final format specifier.  If you want to be able to override their typehint in subclasses, choose a name other than `_`.
 
 You can also specify byte order packing/unpacking rules, by passing a `ByteOrder` to the `Structured` class on class creation.  For example:
 
