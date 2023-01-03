@@ -17,7 +17,6 @@ from ..type_checking import (
     Any,
     BinaryIO,
     Callable,
-    ClassVar,
     Generic,
     ReadableBuffer,
     Self,
@@ -74,20 +73,6 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     """A Serializer that is a thin wrapper around struct.Struct, class creation
     is cached.
     """
-
-    _instance_cache: ClassVar[dict[Any, StructSerializer]] = {}
-
-    def __new__(cls, *args, **kwargs) -> Self:
-        # Simple caching of creation.  Doesn't do any processing to detect
-        # equivalent arguments
-        key = tuple(chain(args, sorted(kwargs.items())))
-        if cached := cls._instance_cache.get(key, None):
-            return cached
-        else:
-            new_instance = super().__new__(cls)
-            cls._instance_cache[key] = new_instance
-            # __init__ is called automatically
-            return new_instance
 
     @property
     def byte_order(self) -> ByteOrder:
@@ -157,15 +142,19 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
             # Don't need a CompoundSerializer for joining with another Struct
             byte_order, lfmt = self._split_format
             byte_order2, rfmt = other._split_format
-            # TODO: Check for conflict in byte_order, byte_order2?
-            return StructSerializer(
+            if byte_order is not byte_order2:
+                raise ValueError(
+                    f'Cannot join StructSerializers with different byte orders: '
+                    f'{self} + {other}'
+                )
+            return type(self)(
                 fold_overlaps(lfmt, rfmt),
                 self.num_values + other.num_values,
                 byte_order,
             )
         return super().__add__(other)
 
-    def __mul__(self, other: int) -> StructSerializer:  # no tool to hint this yet
+    def __mul__(self, other: int) -> Self:  # no tool to hint the [] yet
         """Return a new StructSerializer that unpacks `other` copies of the
         kine this one does.  I.e: for non-string types it puts a multiplier
         number in front of the format specifier, for strings it repeats the
@@ -173,14 +162,14 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         """
         return self._mul_impl(other)
 
-    def __matmul__(self, other: int) -> StructSerializer:
+    def __matmul__(self, other: int) -> Self:
         """Return a new StructSerializer that folds strings together when
         multiplying.  NOTE: This is only supported for StructSerializers that
         consist of either a 's', 'p', or 'x' format specifier.
         """
         return self._mul_impl(other, True)
 
-    def _mul_impl(self, other: int, combine_strings: bool = False) -> StructSerializer:
+    def _mul_impl(self, other: int, combine_strings: bool = False) -> Self:
         if not isinstance(other, int):
             return NotImplemented
         elif other <= 0:
@@ -200,7 +189,16 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         fmt = reduce(
             partial(fold_overlaps, combine_strings=combine_strings), repeat(fmt, other)
         )
-        return StructSerializer(fmt, num_values, byte_order)
+        return type(self)(fmt, num_values, byte_order)
+
+    def __eq__(self, other: StructSerializer) -> bool:
+        if isinstance(other, StructSerializer):
+            return self.format == other.format and self.num_values == other.num_values
+        else:
+            return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.format, self.num_values))
 
 
 class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
@@ -216,6 +214,8 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         actions: tuple[Callable[[Any], Any], ...] = (),
     ) -> None:
         super().__init__(fmt, num_attrs, byte_order)
+        if len(actions) < num_attrs:
+            actions = tuple(chain(actions, repeat(noop_action, num_attrs - len(actions))))
         self.actions = actions
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
@@ -241,28 +241,30 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         old_byte_order, fmt = self._split_format
         if old_byte_order is byte_order:
             return self
-        return StructActionSerializer(fmt, self.num_values, byte_order, self.actions)
+        return type(self)(fmt, self.num_values, byte_order, self.actions)
 
-    def __add__(
-        self, other: StructSerializer[Unpack[Ss]]
-    ) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]:
+    @overload
+    def __add__(self, other: StructSerializer[Unpack[Ss]]) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]: ...
+    @overload
+    def __add__(self, other: Serializer[Unpack[Ss]]) -> Serializer[Unpack[Ts], Unpack[Ss]]: ...
+
+    def __add__(self, other: Serializer) -> Serializer:
         if isinstance(other, StructActionSerializer):
             actions = other.actions
         elif isinstance(other, StructSerializer):
-            actions = repeat(noop_action, other.num_values)
+            actions = ()
         else:
-            return NotImplemented
+            return super().__add__(other)
         byte_order, lfmt = self._split_format
         _, rfmt = other._split_format
         fmt = fold_overlaps(lfmt, rfmt)
         num_values = self.num_values + other.num_values
         actions = tuple(chain(self.actions, actions))
-        return StructActionSerializer(fmt, num_values, byte_order, actions)
+        return type(self)(fmt, num_values, byte_order, actions)
 
     def __radd__(
         self, other: StructSerializer[Unpack[Ss]]
     ) -> StructActionSerializer[Unpack[Ss], Unpack[Ts]]:
-        # NOTE: StructActionSerializer + StructActionSerializer handled by __add__
         if isinstance(other, StructSerializer):
             actions = repeat(noop_action, other.num_values)
         else:
@@ -272,21 +274,24 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         fmt = fold_overlaps(lfmt, rfmt)
         num_values = self.num_values + other.num_values
         actions = tuple(chain(actions, self.actions))
-        return StructActionSerializer(fmt, num_values, byte_order, actions)
+        return type(self)(fmt, num_values, byte_order, actions) # type: ignore
 
     def __mul__(self, other: int) -> StructActionSerializer:  # no way to hint this yet
-        # TODO: Split into __mul__ and __matmul__?  Probably don't need to,
-        # since __matmul__ *should* only be used for bare 's', 'p', and 'x'
-        # formats, but might need to in the future if someone wants an action
-        # applied to a null_char or something.
-        if not isinstance(other, int):
+        res = super().__mul__(other)
+        res.actions = tuple(chain.from_iterable(repeat(self.actions, other)))
+        return res
+
+    def __eq__(self, other: StructSerializer) -> bool:
+        if isinstance(other, StructActionSerializer):
+            return (
+                self.format == other.format and
+                self.num_values == other.num_values and
+                self.actions == other.actions
+            )
+        elif isinstance(other, StructSerializer):
+            return False
+        else:
             return NotImplemented
-        elif other <= 0:
-            raise ValueError('count must be positive')
-        elif other == 1:
-            return self
-        byte_order, fmt = split_byte_order(self.format)
-        fmt = reduce(fold_overlaps, [fmt] * other)
-        num_values = self.num_values * other
-        actions = tuple(chain.from_iterable(repeat(self.actions, other)))
-        return StructActionSerializer(fmt, num_values, byte_order, actions)
+
+    def __hash__(self) -> int:
+        return hash((self.format, self.num_values, self.actions))

@@ -14,6 +14,7 @@ from ..type_checking import (
 from .api import Serializer
 
 if TYPE_CHECKING:
+    # *Only* used for type-hinting, so ok to guard with a TYPE_CHECKING
     from ..structured import Structured
 
     TStructured = TypeVar('TStructured', bound=Structured)
