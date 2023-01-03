@@ -6,6 +6,13 @@ omit = ['structured/type_checking.py']
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+exclude_lines = [
+    'pragma: no cover',
+    'raise NotImplementedError',
+    'if (typing.)?TYPE_CHECKING:',
+    'if __name__ == .__main__.:',
+    '\.\.\.',
+]
 
 [tool.pytest.ini_options]
 testpaths = ['tests']

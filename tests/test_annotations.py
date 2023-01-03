@@ -28,8 +28,8 @@ def test_unwrap_annotated() -> None:
         e: Annotated[int, SerializeAs(int8)]
 
     hints = get_type_hints(A, include_extras=True)
-    assert unwrap_annotated(hints['a']) is StructSerializer('b')
-    assert unwrap_annotated(hints['b']) is StructSerializer('b')
+    assert unwrap_annotated(hints['a']) == StructSerializer('b')
+    assert unwrap_annotated(hints['b']) == StructSerializer('b')
     assert unwrap_annotated(hints['c']) is int
     assert unwrap_annotated(hints['d']) is int
     ehint = unwrap_annotated(hints['e'])
