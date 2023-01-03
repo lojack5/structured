@@ -238,10 +238,10 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         )  # type: ignore
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
-        old_byte_order, fmt = self._split_format
-        if old_byte_order is byte_order:
-            return self
-        return type(self)(fmt, self.num_values, byte_order, self.actions)
+        res = super().with_byte_order(byte_order)
+        if res is not self:
+            res.actions = self.actions
+        return res
 
     @overload
     def __add__(self, other: StructSerializer[Unpack[Ss]]) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]: ...
