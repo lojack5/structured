@@ -3,6 +3,7 @@
 import sys
 import typing
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     BinaryIO,
@@ -21,7 +22,6 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
-    overload,
 )
 
 if sys.version_info < (3, 10):

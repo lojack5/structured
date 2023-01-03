@@ -5,6 +5,7 @@ import operator
 import sys
 import warnings
 from functools import wraps
+from typing import overload
 
 from .type_checking import Any, Callable, NoReturn, Optional, ParamSpec, T, TypeVar
 
