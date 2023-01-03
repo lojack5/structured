@@ -60,6 +60,7 @@ def fold_overlaps(format1: str, format2: str, combine_strings: bool = False) -> 
             return f'{prelude}{count1 + count2}{overlap1}{epilogue}'
     return format1 + format2
 
+
 def split_byte_order(format: str) -> tuple[ByteOrder, str]:
     if format:
         try:
@@ -215,7 +216,9 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
     ) -> None:
         super().__init__(fmt, num_attrs, byte_order)
         if len(actions) < num_attrs:
-            actions = tuple(chain(actions, repeat(noop_action, num_attrs - len(actions))))
+            actions = tuple(
+                chain(actions, repeat(noop_action, num_attrs - len(actions)))
+            )
         self.actions = actions
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
@@ -244,9 +247,16 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         return res
 
     @overload
-    def __add__(self, other: StructSerializer[Unpack[Ss]]) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]: ...
+    def __add__(
+        self, other: StructSerializer[Unpack[Ss]]
+    ) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]:
+        ...
+
     @overload
-    def __add__(self, other: Serializer[Unpack[Ss]]) -> Serializer[Unpack[Ts], Unpack[Ss]]: ...
+    def __add__(
+        self, other: Serializer[Unpack[Ss]]
+    ) -> Serializer[Unpack[Ts], Unpack[Ss]]:
+        ...
 
     def __add__(self, other: Serializer) -> Serializer:
         if isinstance(other, StructActionSerializer):
@@ -274,7 +284,7 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         fmt = fold_overlaps(lfmt, rfmt)
         num_values = self.num_values + other.num_values
         actions = tuple(chain(actions, self.actions))
-        return type(self)(fmt, num_values, byte_order, actions) # type: ignore
+        return type(self)(fmt, num_values, byte_order, actions)  # type: ignore
 
     def __mul__(self, other: int) -> StructActionSerializer:  # no way to hint this yet
         res = super().__mul__(other)
@@ -284,9 +294,9 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
     def __eq__(self, other: StructSerializer) -> bool:
         if isinstance(other, StructActionSerializer):
             return (
-                self.format == other.format and
-                self.num_values == other.num_values and
-                self.actions == other.actions
+                self.format == other.format
+                and self.num_values == other.num_values
+                and self.actions == other.actions
             )
         elif isinstance(other, StructSerializer):
             return False

@@ -147,7 +147,11 @@ class Serializer(Generic[Unpack[Ts]]):
     def __add__(
         self, other: Serializer[Unpack[Ss]]
     ) -> CompoundSerializer[Unpack[Ts], Unpack[Ss]]:
-        if isinstance(other, Serializer) and not isinstance(other, NullSerializer):
+        if isinstance(other, (CompoundSerializer, NullSerializer)):
+            # Allow the other __radd__ to work, even in cases where other is
+            # not a subclass of self (ie: StructSerializer + CompoundSerializer)
+            return NotImplemented
+        elif isinstance(other, Serializer):
             # Default is to make a CompoundSerializer joining the two.
             # Subclasses can provide an __radd__ if optimizing can be done
             return CompoundSerializer((self, other))
@@ -294,7 +298,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         elif isinstance(other, Serializer):
             to_append = [other]
         else:
-            return NotImplemented
+            return super().__add__(other)
         serializers = list(self.serializers)
         return self._add_impl(serializers, to_append)
 

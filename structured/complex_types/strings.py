@@ -189,7 +189,7 @@ class unicode(str, requires_indexing):
         return Annotated[str, _unicode(serializer, encoder, decoder)]
 
 
-class _dynamic_char(Serializer):
+class _dynamic_char(Serializer[bytes]):
     """Serializer for packing/unpacking a dynamically sized bytestring.
 
     :param count_type: The uint* type that holds the bytestring length.
@@ -287,7 +287,7 @@ class _dynamic_char(Serializer):
         return st.unpack_read(readable)
 
 
-class _terminated_char(Serializer):
+class _terminated_char(Serializer[bytes]):
     """A string whose length is determined by a delimiter."""
 
     num_values: ClassVar[int] = 1
@@ -365,7 +365,7 @@ class _terminated_char(Serializer):
 null_char = Annotated[bytes, char[b'\0']]
 
 
-class _net_char(Serializer):
+class _net_char(Serializer[bytes]):
     """A .NET string serializer.  Note that the variable sized length encoding
     is dubious.
     """
@@ -460,11 +460,16 @@ class _net_char(Serializer):
         return (readable.read(count),)
 
 
-class _unicode(Serializer):
+TCharSerializer = Union[
+    StructSerializer[bytes], _dynamic_char, _net_char, _terminated_char
+]
+
+
+class _unicode(Serializer[str]):
     num_values: ClassVar[int] = 1
 
     def __init__(
-        self, char_serializer: Serializer, encoder: Encoder, decoder: Decoder
+        self, char_serializer: TCharSerializer, encoder: Encoder, decoder: Decoder
     ) -> None:
         self.serializer = char_serializer
         self.encoder = encoder

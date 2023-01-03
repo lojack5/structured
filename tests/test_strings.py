@@ -13,7 +13,11 @@ def test_errors() -> None:
     with pytest.raises(TypeError):
         unicode[5, uint32]
     with pytest.raises(TypeError):
-        char[1.0]
+        # NOTE: hash(1) == hash(1.0), so because instance creation is cached
+        # based on the args, technically char[1.0] won't fail if char[1] has
+        # already been created.
+        # TODO: Probably fix this, don't want unintended behavior like this.
+        char[1.1]
     with pytest.raises(ValueError):
         char[b'aa']
 

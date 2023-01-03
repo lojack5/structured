@@ -5,12 +5,13 @@ import operator
 import sys
 import warnings
 from functools import wraps
-from typing import overload
 
 from .type_checking import Any, Callable, NoReturn, Optional, ParamSpec, T, TypeVar
 
 if sys.version_info < (3, 10):
-    from .type_checking import Iterable, S, overload
+    from typing import overload
+
+    from .type_checking import Iterable, S
 
     @overload
     def zips(iterable1: Iterable[S], *, strict: bool = ...) -> Iterable[tuple[S]]:
