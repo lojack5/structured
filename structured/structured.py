@@ -324,6 +324,9 @@ class Structured(metaclass=StructuredMeta):
         vals = ', '.join((f'{attr}={getattr(self, attr)}' for attr in self.attrs))
         return f'{type(self).__name__}({vals})'
 
+    def __repr__(self) -> str:
+        return f'<{self}>'
+
     def __eq__(self, other) -> bool:
         if type(other) == type(self):
             return all(
