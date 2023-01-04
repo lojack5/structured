@@ -13,8 +13,9 @@ __all__ = [
 
 from functools import cache, partial
 
+from .basic_types import _SizeTypes, _TSize
 from ..base_types import requires_indexing
-from ..basic_types import _SizeTypes, _TSize, unwrap_annotated
+from ..basic_types import unwrap_annotated
 from ..serializers import (
     DynamicCharSerializer,
     NETCharSerializer,

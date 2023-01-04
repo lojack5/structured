@@ -11,7 +11,7 @@ from functools import reduce
 from itertools import count
 
 from .base_types import ByteOrder, ByteOrderMode, requires_indexing
-from .basic_types import ispad, unwrap_annotated
+from .basic_types import unwrap_annotated
 from .serializers import (
     AUnion,
     NullSerializer,
@@ -45,6 +45,14 @@ from .type_checking import (
     update_annotations,
 )
 from .utils import StructuredAlias, attrgetter, zips
+
+
+def ispad(annotation: Any) -> bool:
+    """Detect pad[x] generated StructSerializers."""
+    unwrapped = unwrap_annotated(annotation)
+    if isinstance(unwrapped, StructSerializer) and unwrapped.num_values == 0:
+        return True
+    return False
 
 
 def validate_typehint(

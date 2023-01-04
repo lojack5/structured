@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import Annotated, ClassVar, get_origin, get_type_hints
 
 from structured import *
-from structured.basic_types import (
-    unwrap_annotated, _AnnotatedTypes,
-)
+from structured.basic_types import unwrap_annotated
 from structured.base_types import requires_indexing
 
 
@@ -41,11 +39,15 @@ def test_unwrap_annotated() -> None:
 def test_for_annotated() -> None:
     """Ensure all usable types are an Annotated, with a few exceptions.
 
-    Current exceptsion are unindexed pad, char, and unicode.
+    Current exceptions are unindexed pad, char, and unicode, but those are an
+    error to not index.
     """
     # Basic types
-    for kind in _AnnotatedTypes:
+    for kind in (bool8, int8, uint8, int16, uint16, int32, uint32, int64, uint64, float16, float32, float64):
         assert get_origin(kind) is Annotated
+    # Simple type: pad
+    assert get_origin(pad) is not Annotated
+    assert get_origin(pad[3]) is Annotated
     # Complex types: array
     assert get_origin(array) is not Annotated
     assert get_origin(array[Header[1], int8]) is Annotated
@@ -69,4 +71,3 @@ def test_alternate_syntax() -> None:
         d: Annotated[list[int8], array[Header[2], int8]]
         e: Annotated[None, pad[3]]
     assert Base.attrs == ('a', 'b', 'c', 'd', )
-

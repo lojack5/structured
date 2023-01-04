@@ -12,7 +12,9 @@ from functools import cache
 
 from ..structured import Structured
 from ..serializers import StructSerializer, StructuredSerializer, Serializer, ArraySerializer, StaticStructArraySerializer, DynamicStructArraySerializer, NullSerializer
-from ..basic_types import _SizeTypes, unwrap_annotated, requires_indexing
+from .basic_types import _SizeTypes
+from ..base_types import requires_indexing
+from ..basic_types import unwrap_annotated
 from ..type_checking import Self, Generic, T, TypeVar, S, Annotated, cast
 from ..utils import StructuredAlias
 
