@@ -14,6 +14,7 @@ from typing import overload
 
 from ..base_types import ByteOrder
 from ..type_checking import (
+    TYPE_CHECKING,
     Any,
     BinaryIO,
     Callable,
@@ -115,6 +116,13 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
         return super().unpack(buffer[: self.size])  # type: ignore
+
+    if TYPE_CHECKING:
+
+        def unpack_from(
+            self, buffer: ReadableBuffer, offset: int = 0
+        ) -> tuple[Unpack[Ts]]:
+            ...
 
     def unpack_read(self, readable: BinaryIO) -> tuple[Unpack[Ts]]:
         # NOTE: use super-class's unpack to not interfere with custom
