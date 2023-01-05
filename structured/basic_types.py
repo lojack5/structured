@@ -18,11 +18,12 @@ from .type_checking import (
     T,
     get_args,
     get_origin,
+    annotated
 )
 from .utils import StructuredAlias
 
 
-def unwrap_annotated(x: Any) -> Any:
+def __unwrap_annotated(x: Any) -> Any:
     """We use typing.Annotated to provide serialization details.  These can
     show up in a few ways:
     - Annotated[python_type, Serializer]: Happens when hinting with int8, etc
@@ -45,7 +46,7 @@ def unwrap_annotated(x: Any) -> Any:
         actual_type, extras = args[0], args[1:]
         for extra in extras:
             # Look for nested Annotated
-            nested_extra = unwrap_annotated(extra)
+            nested_extra = __unwrap_annotated(extra)
             if isinstance(nested_extra, (Serializer, StructuredAlias)):
                 return nested_extra
             elif isinstance(nested_extra, SerializeAs):
@@ -69,8 +70,9 @@ class SerializeAs(Generic[S, T]):
     serializer: StructSerializer
 
     def __init__(self, hint: S) -> None:
-        serializer = unwrap_annotated(hint)
-        if not isinstance(serializer, StructSerializer):
+        extracter = annotated(StructSerializer)
+        serializer = extracter.extract(hint)
+        if not serializer:
             raise TypeError(f'SerializeAs requires a basic type, got {hint}')
         elif serializer.num_values != 1:
             raise TypeError(
@@ -82,3 +84,15 @@ class SerializeAs(Generic[S, T]):
         """Specify a factory method for creating your type from the unpacked type."""
         st = self.serializer
         return type(self)(StructActionSerializer(st.format, actions=(action,)))
+
+    @staticmethod
+    def _transform(unwrapped, actual, cls, name):
+        if isinstance(unwrapped, SerializeAs):
+            st = unwrapped.serializer
+            if isinstance(st, StructActionSerializer):
+                return st
+            else:
+                return StructActionSerializer(st.format, actions=(actual, ))
+        return unwrapped
+
+annotated.register_transform(SerializeAs._transform)

@@ -15,17 +15,17 @@ from functools import cache, partial
 
 from .basic_types import _SizeTypes, _TSize
 from ..base_types import requires_indexing
-from ..basic_types import unwrap_annotated
 from ..serializers import (
     DynamicCharSerializer,
     NETCharSerializer,
     Serializer,
+    StructSerializer,
     TCharSerializer,
     TerminatedCharSerializer,
     UnicodeSerializer,
     static_char_serializer,
 )
-from ..type_checking import Annotated, TypeVar, Union
+from ..type_checking import Annotated, TypeVar, Union, annotated, cast
 from ..utils import StructuredAlias
 
 
@@ -62,7 +62,11 @@ class char(str, requires_indexing):
         count: Union[int, type[_TSize], type[NET]],
     ) -> TCharSerializer:
         if count in _SizeTypes:
-            serializer = DynamicCharSerializer(unwrap_annotated(count))
+            unwrapped = annotated(StructSerializer[int]).extract(count)
+            if unwrapped:  # Always True for _SizeTypes
+                serializer = DynamicCharSerializer(unwrapped)
+            else:
+                raise RuntimeError('Internal error')
         elif isinstance(count, int):
             serializer = static_char_serializer(count)
         elif count is NET:
@@ -165,7 +169,8 @@ class unicode(str, requires_indexing):
             decoder = encoding.decode
         else:
             raise TypeError('An encoding or an EncoderDecoder must be specified.')
-        serializer = unwrap_annotated(char[count])
+        serializer = annotated(Serializer).extract(char[count])
+        serializer = cast(TCharSerializer, serializer)  # definitely is at this point
         return Annotated[
             str, UnicodeSerializer(serializer, encoder, decoder)
         ]  # type: ignore

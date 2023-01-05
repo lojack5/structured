@@ -6,15 +6,15 @@ from typing import Annotated
 import pytest
 
 from structured import *
-from structured.basic_types import unwrap_annotated
 from structured.serializers import noop_action
+from structured.type_checking import annotated
 
 
 ## Only tests needed for lines not tested by Structured tests
 
 
 def test_counted() -> None:
-    cls = unwrap_annotated(pad[2])
+    cls = annotated(Serializer).extract(pad[2])
     assert isinstance(cls, StructSerializer)
     assert cls.format == '2x'
     assert cls.num_values == 0
@@ -52,14 +52,11 @@ class TestCustomType:
                 else:
                     return self._value == other
 
-        serializer = unwrap_annotated(Annotated[MutableType, SerializeAs(int16)])
-        assert isinstance(serializer, StructActionSerializer)
-        assert serializer.format == 'h'
-        assert serializer.actions == (MutableType,)
-
         class Base(Structured):
             a: Annotated[MutableType, SerializeAs(int16)]
             b: Annotated[MutableType, SerializeAs(uint32)]
+        assert isinstance(Base.serializer, StructActionSerializer)
+        assert Base.serializer.actions == (MutableType, MutableType)
         target_obj = Base(MutableType(11), MutableType(42))
 
         target_data = Base.serializer.pack(11, 42)

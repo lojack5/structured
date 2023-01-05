@@ -4,7 +4,7 @@ import struct
 import pytest
 
 from structured import *
-from structured.basic_types import unwrap_annotated
+from structured.type_checking import annotated
 
 
 def test_errors() -> None:
@@ -25,8 +25,7 @@ def test_errors() -> None:
 
 class TestChar:
     def test_static(self) -> None:
-        wrapped = char[13]
-        unwrapped = unwrap_annotated(wrapped)
+        unwrapped = annotated(Serializer).extract(char[13])
         assert isinstance(unwrapped, StructSerializer)
         assert unwrapped.format == '13s'
 

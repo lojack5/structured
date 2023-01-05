@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated, ClassVar, get_origin, get_type_hints
+from typing import Annotated, ClassVar, get_origin
 
 from structured import *
-from structured.basic_types import unwrap_annotated
 from structured.base_types import requires_indexing
 
 
@@ -15,25 +14,6 @@ def test_eval_annotation() -> None:
     class Base(Structured):
         a: ClassVar[A]
         b: int8
-
-
-def test_unwrap_annotated() -> None:
-    class A:
-        a: int8
-        b: Annotated[int, int8]
-        c: int
-        d: Annotated[int, 'foo']
-        e: Annotated[int, SerializeAs(int8)]
-
-    hints = get_type_hints(A, include_extras=True)
-    assert unwrap_annotated(hints['a']) == StructSerializer('b')
-    assert unwrap_annotated(hints['b']) == StructSerializer('b')
-    assert unwrap_annotated(hints['c']) is int
-    assert unwrap_annotated(hints['d']) is int
-    ehint = unwrap_annotated(hints['e'])
-    assert isinstance(ehint, StructActionSerializer)
-    assert ehint.format == 'b'
-    assert ehint.actions == (int, )
 
 
 def test_for_annotated() -> None:

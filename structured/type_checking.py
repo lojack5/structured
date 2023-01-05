@@ -1,6 +1,8 @@
 # pragma: no cover
+from __future__ import annotations
 
 import sys
+from itertools import chain
 import typing
 from typing import (
     TYPE_CHECKING,
@@ -18,10 +20,12 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    Type,
     cast,
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 if sys.version_info < (3, 10):
@@ -44,8 +48,12 @@ else:
 
 S = TypeVar('S')
 T = TypeVar('T')
+U = TypeVar('U')
+V = TypeVar('V')
+W = TypeVar('W')
 Ts = TypeVarTuple('Ts')
 Ss = TypeVarTuple('Ss')
+P = ParamSpec('P')
 
 
 def update_annotations(cls: type, annotations: dict[str, Any]) -> None:
@@ -93,6 +101,85 @@ def get_union_args(annotation: Any) -> tuple[Any, ...]:
         return get_args(annotation)
     else:
         return ()
+
+class _annotated(Generic[*Ts]):
+    _transforms: ClassVar[list[Callable]] = []
+
+    def __init__(self, *want_types: *Ts) -> None:
+        subclass_checks = [get_args(x)[0] for x in want_types  if (origin := get_origin(x)) in (type, Type)]
+        subclass_checks = [union_args if (union_args := get_union_args(x)) else (x,) for x in subclass_checks]
+        self.subclass_checks = tuple(chain.from_iterable(subclass_checks))
+        instance_checks = [origin if origin else x for x in want_types if (origin := get_origin(x)) not in (type, Type)]
+        instance_checks = [union_args if (union_args := get_union_args(x)) else (x, ) for x in instance_checks]
+        self.instance_checks = tuple(chain.from_iterable(instance_checks))
+        self._custom_check = None
+
+    @classmethod
+    def register_transform(cls, transformer: Callable[[Any, Any, type, str], Union[*Ts]]) -> None:
+        cls._transforms.append(transformer)
+
+    def extract(self, a: Any, *, cls: type | None = None, name: str = '', _actual=None) -> Union[*Ts, None]:
+        if get_origin(a) is Annotated:
+            args = get_args(a)
+            if _actual is not None:
+                actual, extras = _actual, args[1:]
+            else:
+                actual, extras = args[0], args[1:]
+            for extra in extras:
+                nested = self.extract(extra, cls=cls, name=name, _actual=actual)
+                if nested is not None:
+                    nested = self._transform_and_check(nested, actual, cls, name)
+                    if nested:
+                        return nested # type: ignore
+            return self._transform_and_check(actual, _actual, cls, name) # type: ignore
+        return self._transform_and_check(a, _actual, cls, name) # type: ignore
+
+    def _transform_and_check(self, unwrapped, actual, cls, name):
+        for xform in type(self)._transforms:
+            unwrapped = xform(unwrapped, actual, cls, name)
+        if self._custom_check:
+            if self._custom_check(unwrapped):
+                return unwrapped
+            if self._custom_check(actual):
+                return actual
+        for x in (unwrapped, actual):
+            if isinstance(x, type):
+                if issubclass(x, self.subclass_checks):
+                    return x
+            if isinstance(x, self.instance_checks):
+                return x
+
+    def with_check(self, checker: Callable[[Any], TypeGuard[U]]) -> _annotated[*Ts, U]:
+        inst = _annotated()
+        inst.instance_checks = self.instance_checks
+        inst.subclass_checks = self.subclass_checks
+        inst._custom_check = checker
+        return inst # type: ignore
+
+@overload
+def annotated(*want_types: type[T]) -> _annotated[T]: ...
+@overload
+def annotated(*want_types: type[T | U]) -> _annotated[T, U]: ...
+@overload
+def annotated(*want_types: type[T | U | V]) -> _annotated[T, U, V]: ...
+@overload
+def annotated(*want_types: type[T | U | V | W]) -> _annotated[T, U, V, W]: ...
+def annotated(*want_types):
+    return _annotated(*want_types)
+
+annotated.register_transform = _annotated.register_transform
+
+
+@overload
+def safe_issubclass(a, cls: type[T]) -> TypeGuard[type[T]]: ...
+@overload
+def safe_issubclass(a, cls: tuple[Unpack[Ts]]) -> TypeGuard[type[Union[Unpack[Ts]]]]: ...
+def safe_issubclass(a, cls): # type: ignore
+    """issubclass check without having to check if isinstance(a, type) first."""
+    try:
+        return issubclass(a, cls)
+    except TypeError:
+        return False
 
 
 if typing.TYPE_CHECKING:
