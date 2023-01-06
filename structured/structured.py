@@ -10,15 +10,8 @@ import operator
 from functools import reduce
 from itertools import count
 
-from .base_types import ByteOrder, ByteOrderMode, requires_indexing
-from .basic_types import ispad, unwrap_annotated
-from .serializers import (
-    AUnion,
-    NullSerializer,
-    Serializer,
-    StructSerializer,
-    StructuredSerializer,
-)
+from .base_types import ByteOrder, ByteOrderMode
+from .serializers import NullSerializer, Serializer, StructSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -30,11 +23,10 @@ from .type_checking import (
     Optional,
     ReadableBuffer,
     Self,
-    TypeGuard,
+    TypeVar,
     Union,
-    UnionType,
     WritableBuffer,
-    cast,
+    annotated,
     get_annotations,
     get_args,
     get_origin,
@@ -47,40 +39,34 @@ from .type_checking import (
 from .utils import StructuredAlias, attrgetter, zips
 
 
-def validate_typehint(
-    attr_type: type,
-) -> TypeGuard[Union[Serializer, Structured, UnionType]]:
-    """Filter to weed out only annotations which Structured uses to generate
-    its serializers.  These are:
-    - typing.Annotated with a Serializer as an extra argument
-    - Union types
-
-    :param attr_type: A type annotation.
-    :raises TypeError: On a type that derives from `requires_indexing` but
-        has not been indexed.
-    """
-    if isclassvar(attr_type):
-        return False
-    if isinstance(attr_type, type):
-        if issubclass(attr_type, requires_indexing):
-            raise TypeError(f'{attr_type.__qualname__} must be specialized')
-        if issubclass(attr_type, Structured):
-            return True
-    if isinstance(attr_type, Serializer):
+def ispad(annotation: Any) -> bool:
+    """Detect pad[x] generated StructSerializers."""
+    unwrapped = annotated(StructSerializer).extract(annotation)
+    if unwrapped and unwrapped.num_values == 0 and unwrapped.format.endswith('x'):
         return True
-    if isunion(attr_type):
-        return all(
-            map(
-                lambda x: validate_typehint(unwrap_annotated(x)),
-                get_union_args(attr_type),
-            )
-        )
     return False
+
+
+def transform_typehint(hint: Any, cls: type, name: str) -> Union[Serializer, None]:
+    """Read in a typehint, and apply any transformations that need to be done
+    to it.  If the result is a hint Structured is concerned about, return it,
+    otherwise returns None.
+
+    The resulting types we're looking for are instances of Serializers
+    """
+    if isclassvar(hint):
+        return None
+    extracter = annotated(Serializer)
+    unwrapped = extracter.with_check(isunion).extract(hint, cls=cls, name=name)
+    if isinstance(unwrapped, Serializer):
+        return unwrapped
+    return None
 
 
 def filter_typehints(
     typehints: dict[str, Any],
-) -> dict[str, Union[Serializer, Structured, UnionType]]:
+    cls: type[Structured],
+) -> dict[str, Serializer]:
     """Filters a typehints dictionary of a class for only the types which
     Structured uses to generate serializers.
 
@@ -90,9 +76,9 @@ def filter_typehints(
         by Structured.
     """
     return {
-        attr: unwrapped
-        for attr, attr_type in typehints.items()
-        if validate_typehint((unwrapped := unwrap_annotated(attr_type)))
+        attr: transformed
+        for attr, hint in typehints.items()
+        if (transformed := transform_typehint(hint, cls, attr)) is not None
     }
 
 
@@ -324,6 +310,9 @@ class Structured(metaclass=StructuredMeta):
         vals = ', '.join((f'{attr}={getattr(self, attr)}' for attr in self.attrs))
         return f'{type(self).__name__}({vals})'
 
+    def __repr__(self) -> str:
+        return f'<{self}>'
+
     def __eq__(self, other) -> bool:
         if type(other) == type(self):
             return all(
@@ -377,20 +366,7 @@ class Structured(metaclass=StructuredMeta):
                 update_annotations(cls, annotations)
         # Analyze the class
         typehints = get_type_hints(cls, include_extras=True)
-        applicable_typehints = filter_typehints(typehints)
-        # Handle types that need more information from the classdict / transforming
-        for attr in applicable_typehints:
-            hint = applicable_typehints[attr]
-            if isunion(hint):
-                serializer = getattr(cls, attr, None)
-                if isinstance(serializer, AUnion):
-                    applicable_typehints[attr] = serializer
-                else:
-                    raise ValueError('Union types must be configured')
-            elif isinstance(hint, type) and issubclass(hint, Structured):
-                applicable_typehints[attr] = StructuredSerializer(hint)
-        # All values are now Serializers
-        applicable_typehints = cast(dict[str, Serializer], applicable_typehints)
+        applicable_typehints = filter_typehints(typehints, cls)
         # Which variables show up in the __init__
         # Need to ensure 'self' shows up first
         typehints = get_type_hints(cls)
@@ -444,7 +420,7 @@ class Structured(metaclass=StructuredMeta):
         cls_annotations = get_annotations(cls)
         for attr, attr_type in get_type_hints(cls, include_extras=True).items():
             if attr in cls_annotations:
-                unwrapped = unwrap_annotated(attr_type)
+                unwrapped = annotated(StructuredAlias, TypeVar).extract(attr_type)
                 # Attribute's final type hint comes from this class
                 if remapped_type := tvar_map.get(unwrapped, None):
                     annotations[attr] = remapped_type

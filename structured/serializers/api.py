@@ -25,6 +25,7 @@ from ..base_types import ByteOrder
 from ..type_checking import (
     Any,
     BinaryIO,
+    ClassVar,
     Generic,
     Iterable,
     ReadableBuffer,
@@ -164,8 +165,8 @@ TSerializer = TypeVar('TSerializer', bound=Serializer)
 class NullSerializer(Serializer[Unpack[tuple[()]]]):
     """A dummy serializer to function as the initial value for sum(...)"""
 
-    size = 0
-    num_values = 0
+    size: ClassVar[int] = 0
+    num_values: ClassVar[int] = 0
 
     def pack(self, *values: Unpack[tuple[()]]) -> bytes:
         return b''

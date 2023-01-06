@@ -9,10 +9,17 @@ __all__ = [
 
 import os
 
-from .. import basic_types
-from ..type_checking import Any, BinaryIO, Callable, ClassVar, Iterable, ReadableBuffer
+from ..type_checking import (
+    Any,
+    BinaryIO,
+    Callable,
+    ClassVar,
+    Iterable,
+    ReadableBuffer,
+    annotated,
+    get_union_args,
+)
 from .api import Serializer
-from .structured import StructuredSerializer
 
 
 class AUnion(Serializer):
@@ -40,15 +47,10 @@ class AUnion(Serializer):
         self._last_serializer = self.default
 
     @staticmethod
-    def validate_serializer(serializer) -> Serializer:
-        # Need delayed import to avoid circular import
-        from ..structured import Structured
-
-        serializer = basic_types.unwrap_annotated(serializer)
-        if isinstance(serializer, type) and issubclass(serializer, Structured):
-            serializer = StructuredSerializer(serializer)
-        if not isinstance(serializer, Serializer):
-            raise TypeError('Union results must be serializable types.')
+    def validate_serializer(hint) -> Serializer:
+        serializer = annotated(Serializer).extract(hint)
+        if serializer is None:
+            raise TypeError(f'Union results must be serializable types, got {hint!r}.')
         elif serializer.num_values != 1:
             raise ValueError('Union results must serializer a single item.')
         return serializer
@@ -79,6 +81,24 @@ class AUnion(Serializer):
             serializer = serializer.preunpack(partial_object)
         self._last_serializer = serializer
         return self._last_serializer
+
+    @staticmethod
+    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
+        for x in (unwrapped, actual):
+            if union_args := get_union_args(x):
+                extract = annotated(Serializer).extract
+                if all(extract(x) is not None for x in union_args):
+                    serializer = getattr(cls, name, None)
+                    if isinstance(serializer, AUnion):
+                        return serializer
+                    else:
+                        raise TypeError(
+                            f'Union type {cls.__name__}.{name} must be configured'
+                        )
+        return unwrapped
+
+
+annotated.register_transform(AUnion._transform)
 
 
 class LookbackDecider(AUnion):
@@ -128,9 +148,13 @@ class LookaheadDecider(AUnion):
     ) -> None:
         super().__init__(result_map, default)
         self.decider = write_decider
-        self.read_ahead_serializer = basic_types.unwrap_annotated(read_ahead_serializer)
-        if not isinstance(self.read_ahead_serializer, Serializer):
-            raise TypeError('read_ahead_serializer must be a Serializer')
+        serializer = annotated(Serializer).extract(read_ahead_serializer)
+        if not serializer:
+            raise TypeError(
+                'read_ahead_serializer must be a Serializer, got '
+                f'{read_ahead_serializer!r}.'
+            )
+        self.read_ahead_serializer = serializer
 
     def prepack(self, partial_object: Any) -> Serializer:
         result = self.decider(partial_object)

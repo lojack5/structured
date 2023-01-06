@@ -5,7 +5,6 @@ from typing import Annotated
 import pytest
 
 from structured import *
-from structured.complex_types.array_headers import HeaderBase
 
 
 class Item(Structured):
@@ -23,12 +22,6 @@ def items() -> list[Item]:
     ]
 
 
-def test_backwards_compat():
-    a1 = array[1, uint32, Item]     # type: ignore
-    a2 = array[Header[1, uint32], Item]
-    assert a1 is a2
-
-
 def test_errors():
     ## Number of args
     with pytest.raises(TypeError):
@@ -40,8 +33,6 @@ def test_errors():
     ## Header type
     with pytest.raises(TypeError):
         array[Header, int32]
-    with pytest.raises(TypeError):
-        array[HeaderBase, int32]    # type: ignore
     ## Array type
     with pytest.raises(TypeError):
         array[Header[1], 2]     # type: ignore
@@ -52,16 +43,11 @@ def test_errors():
         Header[1, 2]
     with pytest.raises(TypeError):
         Header[1, int]
-    ## format_type arrays with a size check
-    with pytest.raises(TypeError):
-        array[Header[1, uint32], int32]
-    with pytest.raises(TypeError):
-        array[Header[uint32, uint32], int32]
     ## Array size
     with pytest.raises(ValueError):
-        Header[0]       # invalid size
+        Header[-1]       # invalid size
     with pytest.raises(ValueError):
-        Header[0, uint32]      # invalid size
+        Header[-1, uint32]      # invalid size
     with pytest.raises(TypeError):
         Header[int]     # invalid type
     with pytest.raises(TypeError):
@@ -231,6 +217,7 @@ def test_static_checked_structured(items: list[Item]):
 def test_dynamic_format():
     class Compound(Structured):
         a: array[Header[uint32], int8]
+    assert isinstance(Compound.serializer, DynamicStructArraySerializer)
     target_obj = Compound([1, 2, 3])
 
     st = struct.Struct('I3b')
@@ -294,6 +281,14 @@ def test_dynamic_checked_structured(items: list[Item]):
     class Compound(Structured):
         b: uint32
         a: array[Header[uint32, uint32], Item]
+    assert isinstance(Compound.serializer, CompoundSerializer)
+    array_serializer = Compound.serializer.serializers[1]
+    assert isinstance(array_serializer, ArraySerializer)
+    assert isinstance(array_serializer.header_serializer, StructSerializer)
+    assert array_serializer.header_serializer.format == '2I'
+    assert array_serializer.header_serializer.num_values == 2
+    assert array_serializer.static_length == -1
+
     target_obj = Compound(42, items)
 
     with io.BytesIO() as out:

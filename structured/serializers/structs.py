@@ -8,12 +8,14 @@ __all__ = [
 
 import re
 import struct
+import sys
 from functools import cached_property, partial, reduce
 from itertools import chain, repeat
 from typing import overload
 
 from ..base_types import ByteOrder
 from ..type_checking import (
+    TYPE_CHECKING,
     Any,
     BinaryIO,
     Callable,
@@ -26,6 +28,8 @@ from ..type_checking import (
     Unpack,
 )
 from .api import Serializer
+
+_PY_3_12 = sys.version_info >= (3, 12)
 
 
 def noop_action(x: T) -> T:
@@ -75,6 +79,8 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     is cached.
     """
 
+    num_values: int
+
     @property
     def byte_order(self) -> ByteOrder:
         return self._split_format[0]
@@ -87,20 +93,22 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def _split_format(self) -> tuple[ByteOrder, str]:
         return split_byte_order(self.format)
 
+    def __new__(
+        cls, format: str, num_values: int = 1, byte_order: ByteOrder = ByteOrder.DEFAULT
+    ) -> Self:
+        if _PY_3_12:
+            return super().__new__(cls, byte_order.value + format)  # type: ignore
+        else:
+            return super().__new__(cls)
+
     def __init__(
         self,
         format: str,
         num_values: int = 1,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
     ) -> None:
-        """Create a struct.Struct based Serializer
-
-        :param format: Format string.
-        :param num_values: Number of values which will be packed/unpacked by
-            this Serializer.
-        :param byte_order: ByteOrder marking for the format string.
-        """
-        super().__init__(byte_order.value + format)
+        if not _PY_3_12:
+            super().__init__(byte_order.value + format)
         self.num_values = num_values
 
     def __str__(self) -> str:
@@ -115,6 +123,13 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
         return super().unpack(buffer[: self.size])  # type: ignore
+
+    if TYPE_CHECKING:
+
+        def unpack_from(
+            self, buffer: ReadableBuffer, offset: int = 0
+        ) -> tuple[Unpack[Ts]]:
+            ...
 
     def unpack_read(self, readable: BinaryIO) -> tuple[Unpack[Ts]]:
         # NOTE: use super-class's unpack to not interfere with custom
@@ -206,6 +221,17 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
     """A Serializer acting as a thin wrapper around struct.Struct, with
     transformations applied to unpacked values.
     """
+
+    actions: tuple[Callable[[Any], Any], ...]
+
+    def __new__(
+        cls,
+        fmt: str,
+        num_attrs: int = 1,
+        byte_order: ByteOrder = ByteOrder.DEFAULT,
+        actions: tuple[Callable[[Any], Any], ...] = (),
+    ) -> Self:
+        return super().__new__(cls, fmt, num_attrs, byte_order)
 
     def __init__(
         self,

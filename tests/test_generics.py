@@ -116,6 +116,8 @@ def test_serialized_generics() -> None:
 
     class Concrete(Base[uint32]):
         pass
+    assert isinstance(Concrete.serializer, StaticStructArraySerializer)
+    assert Concrete.serializer.serializer.format == '3I'
 
     assert Concrete.attrs == ('a',)
     target_data = struct.pack(f'3I', 1, 2, 3)

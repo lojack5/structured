@@ -4,12 +4,15 @@ __all__ = [
 
 from ..type_checking import (
     TYPE_CHECKING,
+    Any,
     BinaryIO,
     ClassVar,
     Generic,
     ReadableBuffer,
     TypeVar,
     WritableBuffer,
+    annotated,
+    safe_issubclass,
 )
 from .api import Serializer
 
@@ -56,3 +59,15 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
 
     def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
         return (self.obj_type.create_unpack_read(readable),)
+
+    @staticmethod
+    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
+        from ..structured import Structured
+
+        for x in (actual, unwrapped):
+            if safe_issubclass(x, Structured):
+                return StructuredSerializer(x)
+        return unwrapped
+
+
+annotated.register_transform(StructuredSerializer._transform)
