@@ -13,7 +13,6 @@ __all__ = [
 
 from functools import cache, partial
 
-from .basic_types import _SizeTypes, _TSize
 from ..base_types import requires_indexing
 from ..serializers import (
     DynamicCharSerializer,
@@ -27,6 +26,7 @@ from ..serializers import (
 )
 from ..type_checking import Annotated, TypeVar, Union, annotated, cast
 from ..utils import StructuredAlias
+from .basic_types import _SizeTypes, _TSize
 
 
 class NET:

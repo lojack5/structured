@@ -10,16 +10,8 @@ import operator
 from functools import reduce
 from itertools import count
 
-from .base_types import ByteOrder, ByteOrderMode, requires_indexing
-from .basic_types import SerializeAs
-from .serializers import (
-    AUnion,
-    NullSerializer,
-    Serializer,
-    StructSerializer,
-    StructActionSerializer,
-    StructuredSerializer,
-)
+from .base_types import ByteOrder, ByteOrderMode
+from .serializers import NullSerializer, Serializer, StructSerializer
 from .type_checking import (
     Any,
     BinaryIO,
@@ -31,12 +23,10 @@ from .type_checking import (
     Optional,
     ReadableBuffer,
     Self,
-    TypeGuard,
     TypeVar,
     Union,
-    UnionType,
     WritableBuffer,
-    cast,
+    annotated,
     get_annotations,
     get_args,
     get_origin,
@@ -45,7 +35,6 @@ from .type_checking import (
     isclassvar,
     isunion,
     update_annotations,
-    annotated,
 )
 from .utils import StructuredAlias, attrgetter, zips
 

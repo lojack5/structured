@@ -9,7 +9,16 @@ __all__ = [
 
 import os
 
-from ..type_checking import Any, BinaryIO, Callable, ClassVar, Iterable, ReadableBuffer, annotated, get_union_args
+from ..type_checking import (
+    Any,
+    BinaryIO,
+    Callable,
+    ClassVar,
+    Iterable,
+    ReadableBuffer,
+    annotated,
+    get_union_args,
+)
 from .api import Serializer
 
 
@@ -74,16 +83,18 @@ class AUnion(Serializer):
         return self._last_serializer
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any, cls: type, name: str):
+    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
         for x in (unwrapped, actual):
-            if (union_args := get_union_args(x)):
+            if union_args := get_union_args(x):
                 extract = annotated(Serializer).extract
                 if all(extract(x) is not None for x in union_args):
                     serializer = getattr(cls, name, None)
                     if isinstance(serializer, AUnion):
                         return serializer
                     else:
-                        raise TypeError(f'Union type {cls.__name__}.{name} must be configured')
+                        raise TypeError(
+                            f'Union type {cls.__name__}.{name} must be configured'
+                        )
         return unwrapped
 
 
@@ -139,7 +150,10 @@ class LookaheadDecider(AUnion):
         self.decider = write_decider
         serializer = annotated(Serializer).extract(read_ahead_serializer)
         if not serializer:
-            raise TypeError(f'read_ahead_serializer must be a Serializer, got {read_ahead_serializer!r}.')
+            raise TypeError(
+                'read_ahead_serializer must be a Serializer, got '
+                f'{read_ahead_serializer!r}.'
+            )
         self.read_ahead_serializer = serializer
 
     def prepack(self, partial_object: Any) -> Serializer:

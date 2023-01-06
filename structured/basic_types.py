@@ -16,9 +16,9 @@ from .type_checking import (
     S,
     Self,
     T,
+    annotated,
     get_args,
     get_origin,
-    annotated
 )
 from .utils import StructuredAlias
 
@@ -86,13 +86,14 @@ class SerializeAs(Generic[S, T]):
         return type(self)(StructActionSerializer(st.format, actions=(action,)))
 
     @staticmethod
-    def _transform(unwrapped, actual, cls, name):
+    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
         if isinstance(unwrapped, SerializeAs):
             st = unwrapped.serializer
             if isinstance(st, StructActionSerializer):
                 return st
             else:
-                return StructActionSerializer(st.format, actions=(actual, ))
+                return StructActionSerializer(st.format, actions=(actual,))
         return unwrapped
+
 
 annotated.register_transform(SerializeAs._transform)

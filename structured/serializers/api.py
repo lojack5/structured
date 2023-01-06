@@ -25,6 +25,7 @@ from ..base_types import ByteOrder
 from ..type_checking import (
     Any,
     BinaryIO,
+    ClassVar,
     Generic,
     Iterable,
     ReadableBuffer,
@@ -34,7 +35,6 @@ from ..type_checking import (
     TypeVar,
     Unpack,
     WritableBuffer,
-    ClassVar,
 )
 
 

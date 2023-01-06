@@ -5,18 +5,34 @@ __all__ = [
     'HeaderSerializer',
 ]
 
-from .api import Serializer, NullSerializer
-from .structs import StructSerializer
-from ..type_checking import T, Generic, Self, Unpack, BinaryIO, ReadableBuffer, WritableBuffer, ClassVar, Union
 from ..base_types import ByteOrder
+from ..type_checking import (
+    BinaryIO,
+    Generic,
+    ReadableBuffer,
+    Self,
+    T,
+    Union,
+    Unpack,
+    WritableBuffer,
+)
+from .api import NullSerializer, Serializer
+from .structs import StructSerializer
 
-
-HeaderSerializer = Union[NullSerializer, StructSerializer[int], StructSerializer[int, int]]
+HeaderSerializer = Union[
+    NullSerializer, StructSerializer[int], StructSerializer[int, int]
+]
 
 
 class ArraySerializer(Generic[T], Serializer[list[T]]):
     """Generic array serializer."""
-    def __init__(self, header_serializer: HeaderSerializer, item_serializer: Serializer[T], static_length: int = -1) -> None:
+
+    def __init__(
+        self,
+        header_serializer: HeaderSerializer,
+        item_serializer: Serializer[T],
+        static_length: int = -1,
+    ) -> None:
         self.header_serializer = header_serializer
         self.item_serializer = item_serializer
         self.static_length = static_length
@@ -24,7 +40,11 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
         self.num_values = 1
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
-        return type(self)(self.header_serializer.with_byte_order(byte_order), self.item_serializer.with_byte_order(byte_order), self.static_length)
+        return type(self)(
+            self.header_serializer.with_byte_order(byte_order),
+            self.item_serializer.with_byte_order(byte_order),
+            self.static_length,
+        )
 
     def _header_pack_values(self, items: list[T], data_size: int) -> tuple[int, ...]:
         """Which values need to be passed to the header serializer for packing."""
@@ -32,10 +52,13 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
         if self.static_length >= 0:
             # Static sized
             if count != self.static_length:
-                raise ValueError(f'Array length {count} does not match static length {self.static_length}')
+                raise ValueError(
+                    f'Array length {count} does not match static length '
+                    f'{self.static_length}'
+                )
             if self.header_serializer.num_values == 1:
                 # With a data size
-                return data_size,
+                return (data_size,)
             else:
                 return ()
         else:
@@ -44,7 +67,7 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
                 # With a data size
                 return count, data_size
             else:
-                return count,
+                return (count,)
 
     def _header_unpack_values(self, *header_values: int) -> tuple[int, int]:
         if self.static_length >= 0:
@@ -64,7 +87,9 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
 
     def _check_data_size(self, expected: int, actual: int) -> None:
         if expected >= 0 and expected != actual:
-            raise ValueError(f'Array data size {actual} does not match expected size {expected}')
+            raise ValueError(
+                f'Array data size {actual} does not match expected size {expected}'
+            )
 
     def pack(self, *values: Unpack[tuple[list[T]]]) -> bytes:
         data = [b'']
@@ -76,7 +101,9 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
         data[0] = self.header_serializer.pack(*header_values)
         return b''.join(data)
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]) -> None:
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]
+    ) -> None:
         items = values[0]
         self.size = header_size = self.header_serializer.size
         for item in items:
@@ -87,7 +114,7 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[list[T]]]) -> None:
         # TODO: Why is the typechecker flagging this?
-        writable.write(self.pack(*values)) # type: ignore
+        writable.write(self.pack(*values))  # type: ignore
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[list[T]]:
         header = self.header_serializer.unpack(buffer)
@@ -95,10 +122,10 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
         self.size = header_size = self.header_serializer.size
         items = []
         for _ in range(count):
-            items.extend(self.item_serializer.unpack(buffer[self.size:]))
+            items.extend(self.item_serializer.unpack(buffer[self.size :]))
             self.size += self.item_serializer.size
         self._check_data_size(data_size, self.size - header_size)
-        return items,
+        return (items,)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int) -> tuple[list[T]]:
         header = self.header_serializer.unpack_from(buffer, offset)
@@ -109,7 +136,7 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
             items.extend(self.item_serializer.unpack_from(buffer, offset + self.size))
             self.size += self.item_serializer.size
         self._check_data_size(data_size, self.size - header_size)
-        return items,
+        return (items,)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[list[T]]:
         header = self.header_serializer.unpack_read(readable)
@@ -120,13 +147,14 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
             items.extend(self.item_serializer.unpack_read(readable))
             self.size += self.item_serializer.size
         self._check_data_size(data_size, self.size - header_size)
-        return items,
+        return (items,)
 
 
 class StaticStructArraySerializer(Generic[T], Serializer[list[T]]):
     """Specialization of ArraySerializer for static length arrays of items
     that can be unpacked with struct.Struct
     """
+
     def __init__(self, count: int, item_serializer: StructSerializer[T]) -> None:
         self.count = count
         # Need to save the original for with_byte_order
@@ -143,13 +171,17 @@ class StaticStructArraySerializer(Generic[T], Serializer[list[T]]):
 
     def _check_length(self, items: list[T]) -> None:
         if len(items) != self.count:
-            raise ValueError(f'Array length {len(items)} does not match static length {self.count}')
+            raise ValueError(
+                f'Array length {len(items)} does not match static length {self.count}'
+            )
 
     def pack(self, *values: Unpack[tuple[list[T]]]) -> bytes:
         self._check_length(values[0])
         return self.serializer.pack(*values[0])
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]) -> None:
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]
+    ) -> None:
         self._check_length(values[0])
         self.serializer.pack_into(buffer, offset, *values[0])
 
@@ -158,27 +190,35 @@ class StaticStructArraySerializer(Generic[T], Serializer[list[T]]):
         self.serializer.pack_write(writable, *values[0])
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[list[T]]:
-        return list(self.serializer.unpack(buffer)),
+        return (list(self.serializer.unpack(buffer)),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int) -> tuple[list[T]]:
-        return list(self.serializer.unpack_from(buffer, offset)),
+        return (list(self.serializer.unpack_from(buffer, offset)),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[list[T]]:
-        return list(self.serializer.unpack_read(readable)),
+        return (list(self.serializer.unpack_read(readable)),)
 
 
 class DynamicStructArraySerializer(Generic[T], Serializer[list[T]]):
     """Specialization of ArraySerializer for dynamic length arrays of items
     that can be unpacked with struct.Struct
     """
-    def __init__(self, count_serializer: StructSerializer[int], item_serializer: StructSerializer[T]) -> None:
+
+    def __init__(
+        self,
+        count_serializer: StructSerializer[int],
+        item_serializer: StructSerializer[T],
+    ) -> None:
         self.count_serializer = count_serializer
         self.item_serializer = item_serializer
         self.num_values = 1
         self.size = 0
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
-        return type(self)(self.count_serializer.with_byte_order(byte_order), self.item_serializer.with_byte_order(byte_order))
+        return type(self)(
+            self.count_serializer.with_byte_order(byte_order),
+            self.item_serializer.with_byte_order(byte_order),
+        )
 
     def _packer(self, values: tuple[list[T]]) -> tuple[Serializer, list[T]]:
         items = values[0]
@@ -192,7 +232,9 @@ class DynamicStructArraySerializer(Generic[T], Serializer[list[T]]):
         serializer, items = self._packer(values)
         return serializer.pack(serializer.num_values, *items)
 
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]) -> None:
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]
+    ) -> None:
         serializer, items = self._packer(values)
         serializer.pack_into(buffer, offset, serializer.num_values, *items)
 
@@ -201,25 +243,25 @@ class DynamicStructArraySerializer(Generic[T], Serializer[list[T]]):
         serializer.pack_write(writable, serializer.num_values, *items)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[list[T]]:
-        count, = self.count_serializer.unpack(buffer)
+        (count,) = self.count_serializer.unpack(buffer)
         size = self.count_serializer.size
         serializer = self.item_serializer * count
         items = serializer.unpack(buffer[size:])
         self.size = size + serializer.size
-        return list(items),
+        return (list(items),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int) -> tuple[list[T]]:
-        count, = self.count_serializer.unpack_from(buffer, offset)
+        (count,) = self.count_serializer.unpack_from(buffer, offset)
         size = self.count_serializer.size
         serializer = self.item_serializer * count
         items = serializer.unpack_from(buffer, offset + size)
         self.size = size + serializer.size
-        return list(items),
+        return (list(items),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[list[T]]:
-        count, = self.count_serializer.unpack_read(readable)
+        (count,) = self.count_serializer.unpack_read(readable)
         size = self.count_serializer.size
         serializer = self.item_serializer * count
         items = serializer.unpack_read(readable)
         self.size = size + serializer.size
-        return list(items),
+        return (list(items),)

@@ -4,7 +4,8 @@ __all__ = [
 ]
 
 from enum import Enum
-from .type_checking import annotated, safe_issubclass
+
+from .type_checking import Any, annotated, safe_issubclass
 
 
 class ByteOrder(str, Enum):
@@ -33,11 +34,13 @@ class requires_indexing:
     """Marker base class to indicate a class must be indexed in order to get a
     true Serializer.
     """
+
     @staticmethod
-    def _transform(unwrapped, actual, cls, name):
+    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
         for a in (unwrapped, actual):
             if safe_issubclass(unwrapped, requires_indexing):
                 raise TypeError(f'{a.__name__} must be indexed.')
         return unwrapped
+
 
 annotated.register_transform(requires_indexing._transform)
