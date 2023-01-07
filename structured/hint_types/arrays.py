@@ -1,5 +1,5 @@
 """
-Array types
+Array typhinting classes to return serializers.
 """
 from __future__ import annotations
 

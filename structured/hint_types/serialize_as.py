@@ -1,5 +1,5 @@
 """
-All of the basic format types that map directly to struct format specifiers.
+Class to use with Annotated to specify a custom type for serialization.
 """
 from __future__ import annotations
 

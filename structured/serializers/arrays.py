@@ -1,3 +1,9 @@
+"""
+All the serializers for arrays.  Provides a general purpose ArraySerializer,
+plus specializations for arrays containing types with direct serialization via
+struct.
+"""
+
 __all__ = [
     'ArraySerializer',
     'StaticStructArraySerializer',

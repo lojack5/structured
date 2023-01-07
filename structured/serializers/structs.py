@@ -1,3 +1,8 @@
+"""
+Basic buliding block serializer for most other serializers.  Just thin wrappers
+around struct.Struct.
+"""
+
 from __future__ import annotations
 
 __all__ = [

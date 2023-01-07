@@ -33,7 +33,7 @@ class NET:
     """Marker class for denoting .NET strings."""
 
 
-class char(str, requires_indexing):
+class char(bytes, requires_indexing):
     """A bytestring, with three ways of denoting length. If size is an integer,
     it is a static size.  If a uint* type is specified, it is prefixed with
     a packed value of that type which holds the length.  If the NET type is

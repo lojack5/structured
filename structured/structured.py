@@ -1,3 +1,8 @@
+"""
+Provides the Structured class, which pulls all the type-hints together and
+drives the serialization process.
+"""
+
 from __future__ import annotations
 
 import sys

@@ -1,4 +1,10 @@
 # pragma: no cover
+"""
+Central location for importing typing memebers, with fallbacks for older Python
+versions pulling from typing_extensions.  Also provides a few helper methods
+to simplify some common patterns, as well as a method for extracting desired
+hints from Annotated types.
+"""
 from __future__ import annotations
 
 import sys

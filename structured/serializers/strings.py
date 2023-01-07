@@ -1,3 +1,9 @@
+"""
+The serializers for packing/unpacking strings.  The basic serializers are the
+char serializers, then the unicode serializers just wrap those with automatic
+encoding/decoding.
+"""
+
 import io
 import struct
 

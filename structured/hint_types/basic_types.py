@@ -1,3 +1,7 @@
+"""
+Basic typhints for types with direct struct serialization.
+"""
+
 __all__ = [
     'bool8',
     'int8',
@@ -19,7 +23,7 @@ from ..base_types import requires_indexing
 from ..serializers import StructSerializer
 from ..type_checking import Annotated, ClassVar, TypeVar
 
-bool8 = Annotated[int, StructSerializer('?')]
+bool8 = Annotated[bool, StructSerializer('?')]
 int8 = Annotated[int, StructSerializer('b')]
 uint8 = Annotated[int, StructSerializer('B')]
 int16 = Annotated[int, StructSerializer('h')]

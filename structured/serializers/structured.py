@@ -1,3 +1,7 @@
+"""
+Serializer for packing/unpacking a Structured-derived object.
+"""
+
 __all__ = [
     'StructuredSerializer',
 ]
