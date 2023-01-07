@@ -2,7 +2,7 @@ import sys
 import struct
 from operator import attrgetter
 import io
-from typing import Union
+from typing import Union, Annotated
 
 import pytest
 
@@ -36,7 +36,7 @@ def test_errors() -> None:
 
 def test_lookback() -> None:
     class Base(Structured):
-        a: Union[int8, char[1]] = config(LookbackDecider(lambda x: 0, {0: int8}, int8))
+        a: Annotated[Union[int8, char[1]], LookbackDecider(lambda x: 0, {0: int8}, int8)]
 
     assert isinstance(Base.serializer, LookbackDecider)
 
@@ -69,7 +69,7 @@ def test_lookahead() -> None:
         value: float32
 
     class Outer(Structured):
-        record: Union[IntRecord, FloatRecord] = config(LookaheadDecider(char[4], attrgetter('record.sig'), {b'IINT': IntRecord, b'FLOA': FloatRecord}, None))
+        record: Annotated[Union[IntRecord, FloatRecord], LookaheadDecider(char[4], attrgetter('record.sig'), {b'IINT': IntRecord, b'FLOA': FloatRecord}, None)]
 
     int_data = struct.pack('4sI', b'IINT', 42)
     float_data = struct.pack('4sf', b'FLOA', 1.125) # NOTE: exact float in binary
@@ -96,7 +96,7 @@ def test_lookahead() -> None:
 @pytest.mark.skipif(sys.version_info < (3, 10), reason='requires Python 3.10 or higher')
 def test_union_syntax() -> None:
     class Base(Structured):
-        a: int8 | char[4] = config(LookbackDecider(lambda x: 0, {0: int8}, int8))
+        a: Annotated[int8 | char[4], LookbackDecider(lambda x: 0, {0: int8}, int8)]
 
     assert isinstance(Base.serializer, AUnion)
 
@@ -104,7 +104,7 @@ def test_union_syntax() -> None:
 def test_compound_serializer() -> None:
     class Base(Structured):
         a_type: uint8
-        a: Union[uint32, float32, char[4]] = config(LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4]))
+        a: Annotated[Union[uint32, float32, char[4]], LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4])]
 
     assert Base.attrs == ('a_type', 'a')
     assert isinstance(Base.serializer, CompoundSerializer)

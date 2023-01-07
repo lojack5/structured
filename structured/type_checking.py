@@ -131,7 +131,7 @@ class _annotated(Generic[Unpack[Ts]]):
 
     @classmethod
     def register_transform(
-        cls, transformer: Callable[[Any, Any, type, str], Union[Unpack[Ts]]]
+        cls, transformer: Callable[[Any, Any], Union[Unpack[Ts]]]
     ) -> None:
         cls._transforms.append(transformer)
 
@@ -155,11 +155,12 @@ class _annotated(Generic[Unpack[Ts]]):
 
     def _transform_and_check(self, unwrapped, actual, cls, name):
         for xform in type(self)._transforms:
-            unwrapped = xform(unwrapped, actual, cls, name)
+            unwrapped = xform(unwrapped, actual)
         if self._custom_check:
-            if self._custom_check(unwrapped):
-                return unwrapped
-            if self._custom_check(actual):
+            if unwrapped is not None:
+                if self._custom_check(unwrapped):
+                    return unwrapped
+            elif self._custom_check(actual):
                 return actual
         for x in (unwrapped, actual):
             if isinstance(x, type):

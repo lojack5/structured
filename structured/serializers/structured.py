@@ -61,7 +61,7 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
         return (self.obj_type.create_unpack_read(readable),)
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
+    def _transform(unwrapped: Any, actual: Any) -> Any:
         from ..structured import Structured
 
         for x in (actual, unwrapped):

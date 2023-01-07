@@ -32,7 +32,7 @@ class SerializeAs(Generic[S, T]):
         return type(self)(StructActionSerializer(st.format, actions=(action,)))
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
+    def _transform(unwrapped: Any, actual: Any) -> Any:
         if isinstance(unwrapped, SerializeAs):
             st = unwrapped.serializer
             if isinstance(st, StructActionSerializer):

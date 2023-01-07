@@ -4,7 +4,6 @@ __all__ = [
     'AUnion',
     'LookbackDecider',
     'LookaheadDecider',
-    'config',
 ]
 
 import os
@@ -83,18 +82,12 @@ class AUnion(Serializer):
         return self._last_serializer
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
-        for x in (unwrapped, actual):
-            if union_args := get_union_args(x):
-                extract = annotated(Serializer).extract
-                if all(extract(x) is not None for x in union_args):
-                    serializer = getattr(cls, name, None)
-                    if isinstance(serializer, AUnion):
-                        return serializer
-                    else:
-                        raise TypeError(
-                            f'Union type {cls.__name__}.{name} must be configured'
-                        )
+    def _transform(unwrapped: Any, actual: Any) -> Any:
+        if union_args := get_union_args(actual):
+            extract = annotated(Serializer).extract
+            if all(map(extract, union_args)):
+                if isinstance(unwrapped, AUnion):
+                    return unwrapped
         return unwrapped
 
 
@@ -172,8 +165,3 @@ class LookaheadDecider(AUnion):
         result = tuple(self.read_ahead_serializer.unpack_read(readable))[0]
         readable.seek(-self.read_ahead_serializer.size, os.SEEK_CUR)
         return self.get_serializer(result, None, False).unpack_read(readable)
-
-
-def config(decider: AUnion) -> Any:
-    """Type erasing method for configuring Union types with a UnionSerializer"""
-    return decider
