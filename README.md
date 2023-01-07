@@ -228,6 +228,7 @@ class MyStruct(Structured):
 Sometimes, the data structure you're packing/unpacking depends on certain conditions.  Maybe a `uint8` is used to indicate what follows next.  In cases like this, `Structured` supports unions in its typehints.  To hint for this, you need two things:
 1. Every type in your union must be a serializable type (either one of the provided types, or a `Structured` derived class)
 2. You need to configure how to decide which type to unpack/pack as, with a decider.
+3. Use `typing.Annotated` to indicate the decider to use for packing/unpacking.
 
 #### Deciders
 All deciders provide some method to take in information and produce a value to be used to make a dicision.  The decision is made with a "decision map", which is a mapping of value to serialization types.  You can also provide a default serialization type, or `None` if you want an error to be raised if your decision method doesn't produce a value in the decision map.
@@ -240,7 +241,7 @@ Here are a few examples:
 ```python
 class MyStruct(Structured):
   a_type: uint8
-  a: uint32 | float32 | char[4] = config(LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4]))
+  a: Annotated[uint32 | float32 | char[4], LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4])]
 ```
 This example first unpacks a `uint8` and stores it in `a_type`.  The union `a` polls that value with `attrgetter`, if the value is 0 it unpacks a `uint32` for `a`.  If the value is 1, it unpacks a `float32`, and if it is anything else it unpacks just 4 bytes (raw data).
 
@@ -254,7 +255,7 @@ class FloatRecord(Structured):
   value: float32
 
 class MyStruct(Structured):
-  record: IntRecord | FloatRecord = config(LookaheadDecider(char[4], attrgetter('record.sig'), {b'IIII': IntRecord, 'FFFF': FloatRecord}, None))
+  record: Annotated[IntRecord | FloatRecord, LookaheadDecider(char[4], attrgetter('record.sig'), {b'IIII': IntRecord, 'FFFF': FloatRecord}, None)]
 ```
 For unpacking, this example first reads in 4 bytes (`char[4]`), then looks up that value in the dictionary.  If it was `b'IIII'`, then it rewinds and unpacks an `IntRecord` (note: `IntRecord`'s `sig` attribute will be set to `char[4]`.)  If it was `b'FFFF'` it rewinds and unpacks a `FloatRecord`, and if was neither it raises an exception.
 

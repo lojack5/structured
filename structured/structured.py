@@ -47,7 +47,7 @@ def ispad(annotation: Any) -> bool:
     return False
 
 
-def transform_typehint(hint: Any, cls: type, name: str) -> Union[Serializer, None]:
+def transform_typehint(hint: Any) -> Union[Serializer, None]:
     """Read in a typehint, and apply any transformations that need to be done
     to it.  If the result is a hint Structured is concerned about, return it,
     otherwise returns None.
@@ -56,8 +56,7 @@ def transform_typehint(hint: Any, cls: type, name: str) -> Union[Serializer, Non
     """
     if isclassvar(hint):
         return None
-    extracter = annotated(Serializer)
-    unwrapped = extracter.with_check(isunion).extract(hint, cls=cls, name=name)
+    unwrapped = annotated(Serializer).with_check(isunion).extract(hint)
     if isinstance(unwrapped, Serializer):
         return unwrapped
     return None
@@ -78,7 +77,7 @@ def filter_typehints(
     return {
         attr: transformed
         for attr, hint in typehints.items()
-        if (transformed := transform_typehint(hint, cls, attr)) is not None
+        if (transformed := transform_typehint(hint)) is not None
     }
 
 

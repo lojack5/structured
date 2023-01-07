@@ -1,6 +1,6 @@
 """Serializer tests which aren't covered by the tests of full Structured
 classes"""
-from typing import Union
+from typing import Union, Annotated
 
 import pytest
 
@@ -90,7 +90,7 @@ class TestCompoundSerializer:
     class Base1(Structured):
         # Force a compound serializer
         a: int8
-        b: Union[int8, char[1]] = config(LookbackDecider(lambda x: 0, {0: int8}))
+        b: Annotated[Union[int8, char[1]], LookbackDecider(lambda x: 0, {0: int8})]
 
     def test_add(self) -> None:
         # The rest are tested by Structured class creation

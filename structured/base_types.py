@@ -36,7 +36,7 @@ class requires_indexing:
     """
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any, cls: type, name: str) -> Any:
+    def _transform(unwrapped: Any, actual: Any) -> Any:
         for a in (unwrapped, actual):
             if safe_issubclass(unwrapped, requires_indexing):
                 raise TypeError(f'{a.__name__} must be indexed.')
