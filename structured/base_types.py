@@ -1,3 +1,7 @@
+"""
+A few types with no other obvious place to put them.
+"""
+
 __all__ = [
     'ByteOrder',
     'ByteOrderMode',

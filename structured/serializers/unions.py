@@ -1,3 +1,8 @@
+"""
+Serializers for handling union type-hints.  Must be supplied by hinting the
+union with typing.Annotated.
+"""
+
 from __future__ import annotations
 
 __all__ = [
