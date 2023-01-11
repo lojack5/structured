@@ -24,11 +24,6 @@ def test_counted() -> None:
     with pytest.raises(ValueError):
         pad[0]
 
-    # Check that if we use @ anywhere but with char, pad, pascal, unicode
-    # that we'll get an error
-    with pytest.raises(TypeError):
-        StructSerializer('i') @ 2
-
 
 class TestCustomType:
     def test_subclassing_any(self) -> None:
@@ -118,7 +113,7 @@ class TestCustomType:
             # Must serialize as a StructSerializer with 1 value
             SerializeAs(pad[1])
         with pytest.raises(TypeError):
-            SerializeAs(StructSerializer('2b', 2))
+            SerializeAs(StructSerializer('2b'))
         with pytest.raises(TypeError):
             # Not a struct serializer
             SerializeAs(array)

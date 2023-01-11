@@ -60,7 +60,7 @@ class pad(counted):
     Padding bytes are discarded when read, and are written zeroed out.
     """
 
-    serializer = StructSerializer('x', 0)
+    serializer = StructSerializer('x')
     value_type = type(None)
 
 
