@@ -64,10 +64,10 @@ class pad(counted):
     value_type = type(None)
 
 
-class pascal(str, counted):
+class pascal(bytes, counted):
     """String format specifier (bytes in Python).  See 'p' in the stdlib struct
     documentation for specific details.
     """
 
     serializer = StructSerializer('p')
-    value_type = str
+    value_type = bytes
