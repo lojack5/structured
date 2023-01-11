@@ -44,6 +44,19 @@ def noop_action(x: T) -> T:
     return x
 
 
+def compute_num_values(st: struct.Struct, *, __cache: dict[str, int] = {}) -> int:
+    """Determine how many values are used in packing/unpacking a struct format."""
+    try:
+        return __cache[st.format]
+    except KeyError:
+        buffer = bytearray(st.size)
+        # Use struct.Struct so this can be called before full initialization of
+        # subclasses.
+        count = len(struct.Struct.unpack_from(st, buffer))
+        __cache[st.format] = count
+        return count
+
+
 _struct_chars = r'xcbB\?hHiIlLqQnNefdspP'
 _re_end: re.Pattern[str] = re.compile(rf'(.*?)(\d*)([{_struct_chars}])$')
 _re_start: re.Pattern[str] = re.compile(rf'^(\d*)([{_struct_chars}])(.*?)')
@@ -84,8 +97,6 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     is cached.
     """
 
-    num_values: int
-
     @property
     def byte_order(self) -> ByteOrder:
         return self._split_format[0]
@@ -98,9 +109,7 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def _split_format(self) -> tuple[ByteOrder, str]:
         return split_byte_order(self.format)
 
-    def __new__(
-        cls, format: str, num_values: int = 1, byte_order: ByteOrder = ByteOrder.DEFAULT
-    ) -> Self:
+    def __new__(cls, format: str, byte_order: ByteOrder = ByteOrder.DEFAULT) -> Self:
         if _PY_3_12:
             return super().__new__(cls, byte_order.value + format)  # type: ignore
         else:
@@ -109,12 +118,11 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def __init__(
         self,
         format: str,
-        num_values: int = 1,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
     ) -> None:
         if not _PY_3_12:
             super().__init__(byte_order.value + format)
-        self.num_values = num_values
+        self.num_values = compute_num_values(self)
 
     def __str__(self) -> str:
         return f'{type(self).__name__}({self.format}, {self.num_values})'
@@ -124,7 +132,7 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         if old_byte_order is byte_order:
             return self
         else:
-            return StructSerializer(fmt, self.num_values, byte_order)
+            return StructSerializer(fmt, byte_order)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
         return super().unpack(buffer[: self.size])  # type: ignore
@@ -170,7 +178,6 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
                 )
             return type(self)(
                 fold_overlaps(lfmt, rfmt),
-                self.num_values + other.num_values,
                 byte_order,
             )
         return super().__add__(other)
@@ -198,19 +205,10 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         elif other == 1:
             return self
         byte_order, fmt = self._split_format
-        if combine_strings:
-            if fmt in ('s', 'p'):
-                num_values = 1
-            elif fmt == 'x':
-                num_values = 0
-            else:
-                return NotImplemented
-        else:
-            num_values = self.num_values * other
         fmt = reduce(
             partial(fold_overlaps, combine_strings=combine_strings), repeat(fmt, other)
         )
-        return type(self)(fmt, num_values, byte_order)
+        return type(self)(fmt, byte_order)
 
     def __eq__(self, other: StructSerializer) -> bool:
         if isinstance(other, StructSerializer):
@@ -232,23 +230,21 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
     def __new__(
         cls,
         fmt: str,
-        num_attrs: int = 1,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
         actions: tuple[Callable[[Any], Any], ...] = (),
     ) -> Self:
-        return super().__new__(cls, fmt, num_attrs, byte_order)
+        return super().__new__(cls, fmt, byte_order)
 
     def __init__(
         self,
         fmt: str,
-        num_attrs: int = 1,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
         actions: tuple[Callable[[Any], Any], ...] = (),
     ) -> None:
-        super().__init__(fmt, num_attrs, byte_order)
-        if len(actions) < num_attrs:
+        super().__init__(fmt, byte_order)
+        if len(actions) < self.num_values:
             actions = tuple(
-                chain(actions, repeat(noop_action, num_attrs - len(actions)))
+                chain(actions, repeat(noop_action, self.num_values - len(actions)))
             )
         self.actions = actions
 
@@ -299,9 +295,8 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         byte_order, lfmt = self._split_format
         _, rfmt = other._split_format
         fmt = fold_overlaps(lfmt, rfmt)
-        num_values = self.num_values + other.num_values
         actions = tuple(chain(self.actions, actions))
-        return type(self)(fmt, num_values, byte_order, actions)
+        return type(self)(fmt, byte_order, actions)
 
     def __radd__(
         self, other: StructSerializer[Unpack[Ss]]
@@ -313,9 +308,8 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
         byte_order, lfmt = other._split_format
         _, rfmt = self._split_format
         fmt = fold_overlaps(lfmt, rfmt)
-        num_values = self.num_values + other.num_values
         actions = tuple(chain(actions, self.actions))
-        return type(self)(fmt, num_values, byte_order, actions)  # type: ignore
+        return type(self)(fmt, byte_order, actions)  # type: ignore
 
     def __mul__(self, other: int) -> StructActionSerializer:  # no way to hint this yet
         res = super().__mul__(other)
@@ -324,11 +318,7 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
 
     def __eq__(self, other: StructSerializer) -> bool:
         if isinstance(other, StructActionSerializer):
-            return (
-                self.format == other.format
-                and self.num_values == other.num_values
-                and self.actions == other.actions
-            )
+            return self.format == other.format and self.actions == other.actions
         elif isinstance(other, StructSerializer):
             return False
         else:

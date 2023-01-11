@@ -182,7 +182,7 @@ class Structured(metaclass=StructuredMeta):
     struct module."""
 
     __slots__ = ()
-    serializer: ClassVar[Serializer] = StructSerializer('', 0)
+    serializer: ClassVar[Serializer] = StructSerializer('')
     attrs: ClassVar[tuple[str, ...]] = ()
     _attrgetter: ClassVar[Callable[[Structured], tuple[Any, ...]]]
     byte_order: ClassVar[ByteOrder] = ByteOrder.DEFAULT
