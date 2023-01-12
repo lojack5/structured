@@ -22,3 +22,13 @@ def test_tuple_detection():
 
     target_obj = Base2((1, 2))
     standard_tests(target_obj, target_data)
+
+
+def test_non_detection():
+    class Base(Structured):
+        a: tuple[int8, int]
+    assert Base.attrs == ()
+
+    class Base2(Structured):
+        a: tuple[int8, ...]
+    assert Base.attrs == ()
