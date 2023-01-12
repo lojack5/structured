@@ -28,8 +28,10 @@ from .type_checking import (
     Optional,
     ReadableBuffer,
     Self,
+    TypeGuard,
     TypeVar,
     Union,
+    UnionType,
     WritableBuffer,
     annotated,
     get_annotations,
@@ -38,6 +40,7 @@ from .type_checking import (
     get_type_hints,
     get_union_args,
     isclassvar,
+    istuple,
     isunion,
     update_annotations,
 )
@@ -61,7 +64,11 @@ def transform_typehint(hint: Any) -> Union[Serializer, None]:
     """
     if isclassvar(hint):
         return None
-    unwrapped = annotated(Serializer).with_check(isunion).extract(hint)
+
+    def check(annotation: Any) -> TypeGuard[Union[UnionType, tuple]]:
+        return isunion(annotation) or istuple(annotation)
+
+    unwrapped = annotated(Serializer).with_check(check).extract(hint)
     if isinstance(unwrapped, Serializer):
         return unwrapped
     return None
