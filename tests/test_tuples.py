@@ -1,9 +1,13 @@
 import struct
-from typing import Tuple
+from typing import Tuple, Generic, TypeVar
 
 from structured import *
 
 from . import standard_tests
+
+
+T = TypeVar('T')
+U = TypeVar('U')
 
 
 def test_tuple_detection():
@@ -31,4 +35,18 @@ def test_non_detection():
 
     class Base2(Structured):
         a: tuple[int8, ...]
-    assert Base.attrs == ()
+    assert Base2.attrs == ()
+
+
+def test_generics():
+    class GenericStruct(Generic[T, U], Structured):
+        a: tuple[T, U]
+    assert isinstance(GenericStruct.serializer, NullSerializer)
+
+    class ConcreteStruct1(GenericStruct[int8, int]):
+        pass
+    assert isinstance(ConcreteStruct1.serializer, NullSerializer)
+
+    class ConcreteStruct2(GenericStruct[int8, int16]):
+        pass
+    assert isinstance(ConcreteStruct2.serializer, TupleSerializer)
