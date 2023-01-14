@@ -140,7 +140,16 @@ def gen_init(
             union_text = ', '.join(arg.__name__ for arg in union_args)
             args_items.append(f'{name}: Union[{union_text}]')
         else:
-            args_items.append(f'{name}: {annotation.__name__}')
+            ann_name = getattr(annotation, '__name__', None)
+            if not ann_name:
+                # Python 3.9 typing.Tuple, etc have no __name__, instead they
+                # have _name
+                ann_name = getattr(annotation, '_name', None)
+            if ann_name:
+                args_items.append(f'{name}: {ann_name}')
+            else:
+                # Couldn't get the type-hint text
+                args_items.append(name)
     # Inner function text
     args_txt = ', '.join(args_items)
     def_txt = f' def __init__({args_txt}) -> None:'
