@@ -27,7 +27,7 @@ package-dir = {"structured" = "structured"}
 
 [project]
 name = 'structured_classes'
-version = '2.0.2'
+version = '3.0.0'
 authors = [
     { name = 'lojack5' },
 ]
@@ -36,13 +36,14 @@ readme = 'README.md'
 license = { text = 'BSD 3-Clause' }
 requires-python = '>=3.9'
 dependencies = [
-    'typing_extensions==4.3.0; python_version < "3.10"',
+    'typing_extensions~=4.4.0; python_version < "3.11"',
 ]
 classifiers = [
     'Intended Audience :: Developers',
     'Programming Language :: Python :: 3 :: Only',
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
     'License :: OSI Approved :: BSD License',
     'Operating System :: OS Independent',
     'Typing :: Typed',
