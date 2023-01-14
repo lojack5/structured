@@ -7,6 +7,8 @@ import pytest
 
 from structured import *
 
+from . import standard_tests
+
 
 class TestStructured:
     def test_multiple_pad(self) -> None:
@@ -265,22 +267,10 @@ class TestStructured:
             a: uint32
             b: Inner
 
-        a = Outer(1, Inner(2, b'abcd'))
-        test_data = struct.pack('2I4s', 1, 2, b'abcd')
+        target_obj = Outer(1, Inner(2, b'abcd'))
+        target_data = struct.pack('2I4s', 1, 2, b'abcd')
 
-        assert a.pack() == test_data
-        assert Outer.create_unpack(test_data) == a
-
-        buffer = bytearray(len(test_data))
-        a.pack_into(buffer)
-        assert bytes(buffer) == test_data
-        assert Outer.create_unpack_from(buffer) == a
-
-        with io.BytesIO() as stream:
-            a.pack_write(stream)
-            assert stream.getvalue() == test_data
-            stream.seek(0)
-            assert Outer.create_unpack_read(stream) == a
+        standard_tests(target_obj, target_data)
 
 
 def test_fold_overlaps() -> None:

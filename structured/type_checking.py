@@ -24,6 +24,7 @@ from typing import (
     NewType,
     NoReturn,
     Optional,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -109,6 +110,23 @@ def get_union_args(annotation: Any) -> tuple[Any, ...]:
         return ()
 
 
+def istuple(annotation: Any) -> TypeGuard[tuple]:
+    return get_origin(annotation) in (tuple, Tuple)
+
+
+def get_tuple_args(annotation: Any, fixed_size: bool = True) -> tuple[Any, ...] | None:
+    """Get the arguments to a tuple type hint, or None if the annotation is not
+    a tuple hint.  If `fixed_size` is True (default), then the tuple must be
+    a fixed length tuple hint.
+    """
+    if get_origin(annotation) in (tuple, Tuple):
+        args = get_args(annotation)
+        if fixed_size and args and args[-1] is Ellipsis:
+            return None
+        return args
+    return None
+
+
 class _annotated(Generic[Unpack[Ts]]):
     _transforms: ClassVar[list[Callable]] = []
 
@@ -161,7 +179,8 @@ class _annotated(Generic[Unpack[Ts]]):
 
     def _transform_and_check(self, unwrapped, actual, cls, name):
         for xform in type(self)._transforms:
-            unwrapped = xform(unwrapped, actual)
+            if (xformed := xform(unwrapped, actual)) is not None:
+                unwrapped = xformed
         if self._custom_check:
             if unwrapped is not None:
                 if self._custom_check(unwrapped):

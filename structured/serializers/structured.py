@@ -71,7 +71,6 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
         for x in (actual, unwrapped):
             if safe_issubclass(x, Structured):
                 return StructuredSerializer(x)
-        return unwrapped
 
 
 annotated.register_transform(StructuredSerializer._transform)

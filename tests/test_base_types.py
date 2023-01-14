@@ -9,6 +9,8 @@ from structured import *
 from structured.serializers import noop_action
 from structured.type_checking import annotated
 
+from . import standard_tests
+
 
 ## Only tests needed for lines not tested by Structured tests
 
@@ -53,14 +55,13 @@ class TestCustomType:
         assert isinstance(Base.serializer, StructActionSerializer)
         assert Base.serializer.actions == (MutableType, MutableType)
         target_obj = Base(MutableType(11), MutableType(42))
-
         target_data = Base.serializer.pack(11, 42)
 
-        assert target_obj.pack() == target_data
+        standard_tests(target_obj, target_data)
+
         b = Base.create_unpack(target_data)
         assert isinstance(b.a, MutableType)
-        assert b == target_obj
-        assert b.a == 11
+
 
     def test_custom_action(self) -> None:
         class MutableType:
@@ -94,19 +95,7 @@ class TestCustomType:
         target_obj = Base(MutableType(None, 42), 10)
         target_data = struct.pack('2b', 42, 10)
 
-        assert target_obj.pack() == target_data
-        assert Base.create_unpack(target_data) == target_obj
-
-        buffer = bytearray(Base.serializer.size)
-        target_obj.pack_into(buffer)
-        assert bytes(buffer) == target_data
-        assert Base.create_unpack_from(buffer) == target_obj
-
-        with io.BytesIO() as stream:
-            target_obj.pack_write(stream)
-            assert stream.getvalue() == target_data
-            stream.seek(0)
-            assert Base.create_unpack_read(stream) == target_obj
+        standard_tests(target_obj, target_data)
 
     def test_errors(self) -> None:
         with pytest.raises(TypeError):

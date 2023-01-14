@@ -44,7 +44,6 @@ class requires_indexing:
         for a in (unwrapped, actual):
             if safe_issubclass(unwrapped, requires_indexing):
                 raise TypeError(f'{a.__name__} must be indexed.')
-        return unwrapped
 
 
 annotated.register_transform(requires_indexing._transform)

@@ -39,7 +39,6 @@ class SerializeAs(Generic[S, T]):
                 return st
             else:
                 return StructActionSerializer(st.format, actions=(actual,))
-        return unwrapped
 
 
 annotated.register_transform(SerializeAs._transform)

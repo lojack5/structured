@@ -9,6 +9,8 @@ import pytest
 from structured import *
 from structured.serializers import AUnion
 
+from . import standard_tests
+
 
 def test_errors() -> None:
     with pytest.raises(TypeError):
@@ -43,19 +45,7 @@ def test_lookback() -> None:
     test_data = struct.pack('b', 42)
     test_obj = Base(42)
 
-    assert test_obj.pack() == test_data
-    assert Base.create_unpack(test_data) == test_obj
-
-    buffer = bytearray(len(test_data))
-    test_obj.pack_into(buffer)
-    assert bytes(buffer) == test_data
-    assert Base.create_unpack_from(buffer) == test_obj
-
-    with io.BytesIO() as stream:
-        test_obj.pack_write(stream)
-        assert stream.getvalue() == test_data
-        stream.seek(0)
-        assert Base.create_unpack_read(stream) == test_obj
+    standard_tests(test_obj, test_data)
 
 
 def test_lookahead() -> None:
@@ -78,19 +68,7 @@ def test_lookahead() -> None:
     float_obj = Outer(FloatRecord(b'FLOA', 1.125))
 
     for obj, data in ((int_obj, int_data), (float_obj, float_data)):
-        assert obj.pack() == data
-        assert Outer.create_unpack(data) == obj
-
-        buffer = bytearray(len(data))
-        obj.pack_into(buffer)
-        assert bytes(buffer) == data
-        assert Outer.create_unpack_from(buffer) == obj
-
-        with io.BytesIO() as stream:
-            obj.pack_write(stream)
-            assert stream.getvalue() == data
-            stream.seek(0)
-            assert Outer.create_unpack_read(stream) == obj
+        standard_tests(obj, data)
 
 
 @pytest.mark.skipif(sys.version_info < (3, 10), reason='requires Python 3.10 or higher')
@@ -116,22 +94,4 @@ def test_compound_serializer() -> None:
     # Check size to ensure the preprocessing serializers are correctly updating
     # their origin serializers.
     for data, obj in zip(test_data, test_objs):
-        assert obj.pack() == data
-        assert obj.serializer.size == 5
-        assert Base.create_unpack(data) == obj
-        assert obj.serializer.size == 5
-
-        buffer = bytearray(len(data))
-        obj.pack_into(buffer)
-        assert obj.serializer.size == 5
-        assert bytes(buffer) == data
-        assert Base.create_unpack_from(buffer) == obj
-        assert obj.serializer.size == 5
-
-        with io.BytesIO() as stream:
-            obj.pack_write(stream)
-            assert obj.serializer.size == 5
-            assert stream.getvalue() == data
-            stream.seek(0)
-            assert Base.create_unpack_read(stream) == obj
-            assert obj.serializer.size == 5
+        standard_tests(obj, data)

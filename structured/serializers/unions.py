@@ -93,7 +93,6 @@ class AUnion(Serializer):
             if all(map(extract, union_args)):
                 if isinstance(unwrapped, AUnion):
                     return unwrapped
-        return unwrapped
 
 
 annotated.register_transform(AUnion._transform)
