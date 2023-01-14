@@ -23,18 +23,18 @@ from ..base_types import requires_indexing
 from ..serializers import StructSerializer
 from ..type_checking import Annotated, ClassVar, TypeVar
 
-bool8 = Annotated[bool, StructSerializer('?')]
-int8 = Annotated[int, StructSerializer('b')]
-uint8 = Annotated[int, StructSerializer('B')]
-int16 = Annotated[int, StructSerializer('h')]
-uint16 = Annotated[int, StructSerializer('H')]
-int32 = Annotated[int, StructSerializer('i')]
-uint32 = Annotated[int, StructSerializer('I')]
-int64 = Annotated[int, StructSerializer('q')]
-uint64 = Annotated[int, StructSerializer('Q')]
-float16 = Annotated[float, StructSerializer('e')]
-float32 = Annotated[float, StructSerializer('f')]
-float64 = Annotated[float, StructSerializer('d')]
+bool8 = Annotated[bool, StructSerializer[bool]('?')]
+int8 = Annotated[int, StructSerializer[int]('b')]
+uint8 = Annotated[int, StructSerializer[int]('B')]
+int16 = Annotated[int, StructSerializer[int]('h')]
+uint16 = Annotated[int, StructSerializer[int]('H')]
+int32 = Annotated[int, StructSerializer[int]('i')]
+uint32 = Annotated[int, StructSerializer[int]('I')]
+int64 = Annotated[int, StructSerializer[int]('q')]
+uint64 = Annotated[int, StructSerializer[int]('Q')]
+float16 = Annotated[float, StructSerializer[float]('e')]
+float32 = Annotated[float, StructSerializer[float]('f')]
+float64 = Annotated[float, StructSerializer[float]('d')]
 
 
 _SizeTypes = (uint8, uint16, uint32, uint64)
@@ -69,5 +69,5 @@ class pascal(bytes, counted):
     documentation for specific details.
     """
 
-    serializer = StructSerializer('p')
+    serializer = StructSerializer[bytes]('p')
     value_type = bytes

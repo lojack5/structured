@@ -2,6 +2,7 @@
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
+
 # structured - creating classes which pack and unpack with Python's `struct` module.
 This is a small little library to let you leverage type hints to define classes which can also be packed and unpacked using Python's `struct` module.  The basic usage is almost like a dataclass:
 
@@ -10,21 +11,74 @@ class MyClass(Structured):
   file_magic: char[4]
   version: uint8
 
-a = MyClass()
+a = MyClass(b'', 0)
 
 with open('some_file.dat', 'rb') as ins:
   a.unpack_read(ins)
 ```
 
-### Format specifiers (basic types)
+# Contents
 
+1. [Hint Types](#hint-types): For all the types you can use as type-hints.
+    - [Basic Types](#basic-types)
+    - [Complex Types](#complex-types)
+    - [Custom Types](#custom-types)
+2. [The `Structured` class](#the-structured-class)
+3. [Generics](#generics)
+4. [Serializers](#serializers)
+
+
+# Hint Types
+If you just want to use the library, these are the types you use to hint your instance variables to
+make them detected as serialized by the packing/unpacking logic. I'll use the term **serializable**
+to mean a hinted type that results in the variable being detected by the `Structured` class as being
+handled for packing and unpacking. They're broken up into two basic
+catergories:
+- Basic Types: Those with direct correlation to the `struct` format specifiers, needing no extra
+  logic.
+- Complex Types: Those still using `struct` for packing and unpacking, but requiring extra logic
+  so they do not always have the same format specifier.
+- Custom Types: You can use your own custom classes and specify how they should be packed and
+  unpacked.
+
+
+Almost all types use `typing.Annotated` under the hood to just add extra serialization information
+to the type they represent. For example `bool8` is defined as
+`Annotated[bool8, StructSerializer('?')]`, so type-checkers will properly see it as a `bool`.
+
+There are four exceptions to this.  For these types, almost everything should pass inspection by a
+type-checker, except for assignment.  These are:
+- `char`: subclassed from `bytes`.
+- `pascal`: subclassed from `bytes`.
+- `unicode`: subclassed from `str`.
+- `array`: subclassed from `list`.
+
+If you want to work around this, you can use `typing.Annotated` yourself to appease the
+type-checker:
+
+```python
+class MyStruct1(Structured):
+  name: unicode[100]
+
+item = MyStruct('Jane Doe')
+item.name = 'Jessica'   # Type-checker complains about "str incompatible with unicode".
+
+class MyStruct2(Structured):
+  name: Annotated[str, unicode[100]]
+
+item = MyStruct('Jane Doe')
+item.name = 'Jessica'   # No complaint from the type-checker.
+```
+
+
+## Basic Types
 Almost every format specifier in `struct` is supported as a type:
 
 | `struct` format | structured type | Python type | Notes |
 |:---------------:|:---------------:|-------------|:-----:|
-| `x`             | `pad`           |             |(1)(4) |
+| `x`             | `pad`           |             |(1)(3) |
 | `c`             | equivalent to `char[1]` | `bytes` with length 1 | |
-| `?`             | `bool8`         | `int`       |  (3)  |
+| `?`             | `bool8`         | `int`       |       |
 | `b`             | `int8`          | `int`       |       |
 | `B`             | `uint8`         | `int`       |       |
 | `h`             | `int16`         | `int`       |       |
@@ -43,19 +97,36 @@ Almost every format specifier in `struct` is supported as a type:
 | `P`             | not supported   |             |       |
 
 Notes:
- 1. These type must be indexed to specify their length.  For a single byte `char` for example (`'s'`), use `char[1]`.
+ 1. These type must be indexed to specify their length.  For a single byte `char` for example
+    (`'s'`), use `char[1]`.
  2. The 16-bit float type is not supported on all platforms.
- 3. `struct` treats `bool` as an `int`, so this is implemented as an `int`.  Packing and unpacking works that same as with `struct`.
- 4. Pad variables are skipped and not actually assigned when unpacking, nor used when packing.  There is a special metaclass hook to allow you to name all of your pad variables `_`, and they still **all** count towards the final format specifier.  If you want to be able to override their typehint in subclasses, choose a name other than `_`.
+ 3. Pad variables are skipped and not actually assigned when unpacking, nor used when packing. There
+    is a special metaclass hook to allow you to name all of your pad variables `_`, and they still
+    **all** count towards the final format specifier.  If you want to be able to override their
+    type-hint in subclasses, choose a name other than `_`.
 
-You can also specify byte order packing/unpacking rules, by passing a `ByteOrder` to the `Structured` class on class creation.  For example:
+Consecutive variables with any of these type-hints will be combined into a single `struct` format
+specifier.  Keep in mind that Python's `struct` module may insert extra padding bytes *between*
+(but never before or after) format specifiers, depending on the Byte Order specification used.
+
+Example:
 
 ```python
-class MyClassLE(Structured, byte_order=ByteOrder.LITTLE_ENDIAN):
-  magic: char[4]
-  version: uint16
+class MyStruct(Structured):
+  a: int8
+  b: int8
+  c: uint32
+  _: pad[4]
+  d: char[10]
+  _: pad[2]
+  e: uint32
 ```
+In this example, all of the instance variables are of the "basic" type, so the final result will be
+as if packing or unpacking with `struct` using a format of `2bI4x10s2xI`.  Note we took advantage of
+the `Structured` metaclass to specify the padding using the same name `_`.
 
+
+### Byte Order
 All of the specifiers are supported, the default it to use no specifier:
 | `struct` specifier | `ByteOrder` |
 |:------------------:|:-----------:|
@@ -65,177 +136,135 @@ All of the specifiers are supported, the default it to use no specifier:
 | `@`                | `NATIVE_NATIVE` |
 | `!`                | `NETWORK`   |
 
-### Using the length specified types
-Pad bytes and strings often need more than one byte, use indexing to specify how many bytes they use:
-```python
-class MyStruct(Structured):
-  magic: char[4]
-  _: pad[10]
-```
-Now `MyStruct` has a format of `'4s10x'`.
-
-
-### Creating your own types for annotations
-Sometimes, the provided types are not enough.  Maybe you have a mutable type that encapsulates an integer.  To enable your type to work with `Structured` as a type annotation, you can specify how it should be serialized by referencing one of the basic types.  A restriction here is that basic type must unpack as a single value (so for example, `pad` is not allowed). To communicate this information to `Structured`, use `typing.Annotated` and `structured.SerializeAs`:
+To specify a byte order, pass `byte_order=ByteOrder.<option>` to the `Structured` sub-classing
+machinery, like so:
 
 ```python
-class MyInt:
-  _wrapped: int
-  def __init__(self, value: int) -> None:
-    self._wrapped = value
-
-  def __index__(self) -> int:
-    return self._wrapped
-
-class MyStruct(Structured):
-  version: Annotated[MyInt, SerializeAs(int32)]
-```
-
-If you use your type a lot, you can use a `TypeAlias` to make things easier:
-
-```python
-MyInt32: TypeAlias = Annotated[MyInt, SerializeAs(int32)]
-
-class MyStruct(Structured):
-  version: MyInt32
-```
-
-Finally, if you're missing some of the old functionality of `Formatted` (versions 2 of `structured`), you could write your own `__class_getitem__`:
-```python
-class MyInt:
-  ...
-
-  def __class_getitem__(cls, key) -> type[Self]:
-    return Annotated[cls, SerializeAs[key]]
-```
-
-As a final note, if your custom type is representing an integer, make sure to implement a `__index__` so it can be packed with `struct`.  Similarly, if it is representing a float, make sure to implement a `__float__`.  For `bytes` wrappers, unfortunately `struct` does not call `__bytes__` on the unerlying object.  Your options in that case are to base your class on `bytes` (forcing it to be immutable), or to write a `Serializer` for it.  You can take a look at `complex_types/strings.py` for some ideas on how to do that.
-
-If your type is more complicated, you can define a `Structured` derived class for it, then hint with that class:
-
-```python
-class MyItem(Structured):
-  a: uint32
-  b: float32
-
-class MyStruct(Structured):
-  sig: char[4]
-  item: MyItem
-```
-
-### Extending
-`Structured` classes can be extended to create a new class with additional, modified, or removed attributes.  If you annotate an attribute already in the base class, it will change its format specifier to the new type.  This can be used for example, to remove an attribute from the struct packing/unpacking by annotating it with a python type rather than one of the provided types.
-
-```python
-class Base(Structured):
+class MyStruct(Structured, byte_order=ByteOrder.NETWORK):
   a: int8
-  b: int16
-  c: int32
-
-class Derived(Base):
-  a: int16
-  b: None
-  d: float32
+  b: uint32
 ```
-In this example, `Derived` now treats `a` as an `int16`, and ignores `b` completely when it comes to packing/unpacking.  The format string for `Derived` is now `'hif'` (`a: int8`, `c: int32`, `d: float32`).
-
-#### Extending - Byte Order
-When extending a `Structured` class, the default behavior is to only allow extending if the derived class has the same byte order specifier as the base class.  If you are purposfully wanting to change the byte order, pass `byte_order_mode=ByteOrderMode.OVERRIDE` in the class derivation:
-```python
-class Base(Structured, byte_order=ByteOrder.LE):
-  magic: char[4]
-  version: uint32
-
-class Derived(Base, byte_order=ByteOrder.BE, byte_order_mode=ByteOrderMode.OVERRIDE):
-  hash: uint64
-```
-
-### Accessing serialization details.
-Any `Structured` derived class stores a class level `serializer` attribute, which is a `struct.Struct`-like object.  Due to the dynamic nature of some of the advanced types however, `serializer.size` is only guaranteed to be up to date with the most recent `pack_into`, `pack_write`, `unpack`, `unpack_from`, or `unpack_read`.  For `unpack` you can use `len` to get the unpacked size.  In some cases (when all class items are simple format types), `serializer` is actually a subclass of `struct.Struct`, in which case you can access all of the attributes as you would expect:
-```python
-class MyStruct(Structured):
-  a: int32
-  b: float32
-
-assert isinstance(MyStruct.serializer, struct.Struct)
-format_string = MyStruct.serializer.format
-format_size = MyStruct.serializer.size
-```
-
-You can also access the `attrs` class attribute, which is the attribute names handled by the class's serializer, in the order they are packed/unpacked.
-
-For more advanced work, it is recommended to rework your class layout, or write your own custom `Serializer` class and annotate your types with it (See: structured/base_types.py for more information on the Serializer API).
-
-In the instance you find yourself working with a common pattern that is not handled easily by the built in features of `structured`, feel free to open a feature request!
+In this example, the `NETWORK` (`!`) specifier was used, so `struct` will not insert any padding
+bytes between variables `a` and `b`, and multi-byte values will be unpacked as Big Endian numbers.
 
 
-### Packing / Unpacking methods
-`Structured` classes provide a couple of ways to pack and unpack their values:
- - `Structured.unpack(byteslike)`: Unpacks values from a bytes-like object and sets the instance's variables.
- - `Structured.unpack_from(buffer, offset = 0)`: Unpacks values from an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html) and sets the instance's variables.
- - `Structured.unpack_read(readable)`: Reads data from a file-like object, unpacks, and sets the instance's variables.
- - `Structured.pack()`: Packs the instance's variables, returning `bytes`.
- - `Structured.pack_int(buffer, offset = 0)`: Packs the instance's variables into an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html).
- - `Structured.create_unpack(byteslike)`: Creates new object with values unpacked from a bytes-like object.
- - `Structured.create_unpack_from(buffer, offset = 0)`: Creates a new object with values unpacked from an object supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html).
- - `Structured.create_unpack_read(readable)`: Creates a new object with values unpacked from a readable file-like object.
+## Complex Types
+All other types fall into the "complex" category.  They currently consist of:
+- `tuple`: Fixed length tuples of serializable objects.
+- `array`: Lists of a single type of serializable object.
+- `char`: Although `char[3]` (or any other integer) is considered a basic type, `char` also supports
+  variable length strings.
+- `unicode`: A wrapper around `char` to add automatic encoding on pack and decoding on unpack.
+- `unions`: Unions of serializable types are supported as well.
+- `Structured`-derived types: You can use any of your `Structured`-derived classes as a type-hint,
+  and the variable will be serialized as well.
 
 
-## Advanced types
-Structured also supports a few more complex types that require extra logic to pack and unpack.  These are:
-- `char`: For unpacking binary blobs whose size is not static, but determined by data just prior to the blob (yes, it's also a basic type).
-- `unicode`: For strings, automatically encoding for packing and decoding for unpacking.
-- `array`: For unpacking multiple instances of a single type.  The number to unpack may be static or, like `blob`, determined by data just prior to the array.
-- Unions: For types that could unpack as many different types, depending on certain conditions.
+### Tuples
+Both the `tuple` and `Tuple` type-hints are supported, including `TypeVar`s (see: `Generics`). To be
+detected as serializable, the `tuple` type-hint must be for a fixed sized `tuple` (so no elipses
+`...`), and each type-hint in the `tuple` must be a serializable type.
 
-
-### String types
-There are two string types, `char` and `unicode`, with four ways to specify their length (in bytes):
-- `char`: A bare `char` or `unicode` specifies unpacking a single byte.
-- `char[5]`: Specifying an integer unpacks a fixed sized `bytes` (for `char`) or `str` (for `unicode`).
-- `char[uint8]`: Specifying one of `uint8`, `uint16`, `uint32`, or `uint64` causes unpacking fist the specified integers, which denotes the length in bytes of the `char` or `unicode` string to unpack.
-- `char[b'\0']`: Specifying a single byte indicates a terminated string.  Data will be unpacked until the delimiter is encountered.  As a quick alias, you can use `null_char` and `null_unicode` for a null-terminated `bytes` or `str`, respectively.  Packing terminated strings will automatically add the terminator if missing, and unpacking will fail if the terminator is not encountered.
-
-The difference between `char` and `unicode` is that `unicode` objects will automatically encode/decode the string for you.  You can specify one of the built-in encodings as a second argument to `unicode`: `unicode[10, 'ascii']`, or if needed code your own `EncoderDecoder` class to provide the encoding and decoding methods.  The default encoding if not specified is `'utf8'`.
-
-
-### `array`
-Arrays allow for reading in mutiple instances of one type.  These types may be any of the other basic types (except `char`, and `pascal`), or a `Structured` type.  Arrays can be used to support data that is structured in one of five ways.  First specify a `Header` which determines how the length is determined, and optionally any size check bytes, then specify a data type held by the `array`:
-- `array[Header[10], int8]`: A static number (`10`) of basic items (`int8`).  Array length will be checked on writing.
-- `array[Header[uint32], int8]`: A dynamic number of basic items (`int8`).  Array length is determined by unpacking a `uint32` first.
-- `array[Header[3], MyStruct]`: A static number (`3`) of `Structured` derived items (`MyStruct` instances).  Array length will be checked on writing.
-- `array[Header[uint8], MyStruct]`: A dynamic number of `Structured` derived items (`MyStruct` instances).  Array length is determined by unpacking a `uint8` first.
-- `array[Header[uint8, uint32], MyStruct]`: A dynamic number of `Structured` derived items (`MyStruct` instances).  Array length is determined by unpacking a `uint8` first, and directly after a `uint32` is unpacked which holds the number of bytes which hold the actual `Structured` items (not including the header size).  This size is checked on unpacking.
-NOTE: Only arrays holding `Structured` items currently support the optional data size unpacking in the `Header`.
-
-For example, suppose you know there will always be 10 `uint8`s in your object and you want them in an array:
+Example:
 ```python
 class MyStruct(Structured):
-  items: array[Header[10], uint8]
+  position: tuple[int8, int8]
+  size: tuple[int8, int8]
 ```
 
-Or if you need to unpack a `uint32` to determine the number of items, then a `uint32` to detemine the data size of the array, each item holding a `uint8` and a `uint16`:
+### Arrays
+Arrays are `list`s of one kind of serializable type. You do need to specify how `Structured` will
+determine the *length* of the list when unpacking, and how to write it when packing. To do this,
+you chose a `Header` type. The final type-hint for your list then becomes
+`array[<header_type>, <item_type>]`. Arrays also support `TypeVar`s.
+
+Here are the header types:
+- `Header[3]` (or any other positive integer): A fixed length array. No length byte is packed or
+  unpacked, just the fixed number of items. When packing, if the list doesn't contain the fixed
+  number of elements specified, a `ValueError` is raised.
+- `Header[uint32]` (or any other `uint*`-type): An array with the length stored as a `uint32` (or
+  other `uint*`-type) just before the items.
+- `Header[uint32, uint16]`: An array with two values stored just prior to the items. The first
+  value (in this case a `uint32`) is the length of the array. The second value (in this case a
+  `uint16`) denotes how many bytes of data the array items takes up. When unpacking, this size is
+  checked against how many bytes were actually required to unpack that many items. In the case of a
+  mismatch, a `ValueError` will be raises.
+
+Example:
 ```python
 class MyItem(Structured):
-  first: int8
-  second: uint16
+  name: unicode[100]
+  age: uint8
 
 class MyStruct(Structured):
-  ten_items: array[Header[10, uint32], MyItem]
+  students: array[Header[uint32], MyItem]
 ```
+
+
+### `char`
+For unpacking bytes other than with a fixed length, you have a few more options with `char`:
+- `char[uint8]` (or any other `uint*` type): This indicates that a value (a `uint8` in this case)
+  will be packed/unpack just prior to the `bytes`.  The value holds the number of `bytes` to pack or
+  unpack.
+- `char[b'\0']` (or any other single bytes): This indicates a terminated byte-string. For
+  unpacking, bytes will be read until the terminator is encountered (the terminator will be
+  discarded). For packing, the `bytes` will be written, and a terminator will be written at the end
+  if not already written.  The usual case for this is NULL-terminated byte-strings, so a quick alias
+  for that is provided: `null_char`.
+
+
+### `unicode`
+For cases where you want to read a byte-string and treat it as text, `unicode` will automatically
+encode/decode it for you.  The options are the same as for `char`, but with an optional second
+argument to specify how to encode/decode it.  The second option can either be a string indicating
+the encoding to use (defaults to `utf8`), or for more complex solutions you may provide an
+`EncoderDecoder` class.  Similar to `char`, we provide `null_unicode` as an alias for
+`unicode[b'\0', 'utf8']`.
+
+```python
+class MyStruct(Structured):
+  name: null_unicode
+  description: unicode[255, 'ascii']
+  bio: unicode[uint32, MyEncoderDecoder]
+```
+
+To write a custom encoder-decoder, you must subclass from `EncoderDecoder` and implement the two
+class methods `encode` and `decode`:
+
+```python
+class MyEncoderDecoder(EncoderDecoder):
+  @classmethod
+  def encode(text: str) -> bytes: ...
+
+  @classmethod
+  def decode(bytestring: bytes) -> str: ...
+```
+
 
 ### Unions
-Sometimes, the data structure you're packing/unpacking depends on certain conditions.  Maybe a `uint8` is used to indicate what follows next.  In cases like this, `Structured` supports unions in its typehints.  To hint for this, you need two things:
-1. Every type in your union must be a serializable type (either one of the provided types, or a `Structured` derived class)
-2. You need to configure how to decide which type to unpack/pack as, with a decider.
+Sometimes, the data structure you're packing/unpacking depends on certain conditions.  Maybe a
+`uint8` is used to indicate what follows next.  In cases like this, `Structured` supports unions in
+its typehints.  To hint for this, you need to do three things:
+1. Every type in your union must be a serializable type.
+2. You need create a *decider* which will perform the logic on deciding how to unpack the data.
 3. Use `typing.Annotated` to indicate the decider to use for packing/unpacking.
 
 #### Deciders
-All deciders provide some method to take in information and produce a value to be used to make a dicision.  The decision is made with a "decision map", which is a mapping of value to serialization types.  You can also provide a default serialization type, or `None` if you want an error to be raised if your decision method doesn't produce a value in the decision map.
+All deciders provide some method to take in information and produce a value to be used to make a
+decision. The decision is made with a "decision map", which is a mapping of value to serializable
+types. You can also provide a default serializable type, or `None` if you want an error to be raised
+if your decision method doesn't produce a value in the decision map.
 
-For `LookbackDecider`, you provide a method that accepts an object, and produces a value.  The object will be a `Structured`-like object with all currently unpacked values set to the applicable attributes (in some cases, this actually *is* the `Structured` object being packed/unpacked).  A common method to use for this decider is `operator.attrgetter`.
-
-For `LookaheadDecider`, the functionality differs between packing and unpacking.  For unpacking, you must specify a serializable type that will be unpacked first, then sent to the decision map.  For packing, you must provide a write deciding method, which acts in the same was as `LookbackDecider`'s decision method.
+There are currently two deciders.  In addition to the decision map and default, you will need to
+provide a few more things for each:
+- `LookbackDecider`: You provide a method that accepts the object to be packed/unpacked and produces
+  a decision value.  Commonly, `operator.attrgetter` is used here.  A minor detail: for unpacking
+  operations, the object sent to your method will not be the actual unpacked object, merely a proxy
+  with the values unpacked so far set on it.
+- `LookaheadDecider`: For packing, this behaves just like `LookbackDecider`.  For unpacking, you
+  need to specify a serializable type which is unpacked first and used as the the value to look up
+  in the decision map.  After this first value is unpacked, the data-stream is rewound back for
+  unpacking the object.
 
 Here are a few examples:
 ```python
@@ -243,7 +272,9 @@ class MyStruct(Structured):
   a_type: uint8
   a: Annotated[uint32 | float32 | char[4], LookbackDecider(attrgetter('a_type'), {0: uint32, 1: float32}, char[4])]
 ```
-This example first unpacks a `uint8` and stores it in `a_type`.  The union `a` polls that value with `attrgetter`, if the value is 0 it unpacks a `uint32` for `a`.  If the value is 1, it unpacks a `float32`, and if it is anything else it unpacks just 4 bytes (raw data).
+This example first unpacks a `uint8` and stores it in `a_type`. The union `a` polls that value with
+`attrgetter`, if the value is 0 it unpacks a `uint32`, if it is 1 it unpacks a `float32`, and if it
+is anything else it unpacks just 4 bytes (raw data), storing whatever was unpacked in `a`.
 
 ```python
 class IntRecord(Structured):
@@ -257,97 +288,324 @@ class FloatRecord(Structured):
 class MyStruct(Structured):
   record: Annotated[IntRecord | FloatRecord, LookaheadDecider(char[4], attrgetter('record.sig'), {b'IIII': IntRecord, 'FFFF': FloatRecord}, None)]
 ```
-For unpacking, this example first reads in 4 bytes (`char[4]`), then looks up that value in the dictionary.  If it was `b'IIII'`, then it rewinds and unpacks an `IntRecord` (note: `IntRecord`'s `sig` attribute will be set to `char[4]`.)  If it was `b'FFFF'` it rewinds and unpacks a `FloatRecord`, and if was neither it raises an exception.
+For unpacking, this example first reads in 4 bytes (`char[4]`), then looks up that value in the
+dictionary. If it was `b'IIII'` then it rewinds and unpacks an `IntRecord` (note: `IntRecord`'s
+`sig` attribute will be set to `char[4]`). If it was `b'FFFF'` it rewinds and unpacks a
+`FloatRecord`, and if was neither it raises an exception.
 
 For packing, this example uses `attrgetter('record.sig')` on the object to decide how to pack it.
 
 
+### Structured
+You can also type-hint with one of your `Structured` derived classes, and the value will be unpacked
+and packed just as expected.  `Structured` doesn't *fully* support `Generic`s, so make sure to read
+the section on that to see how to hint properly with a `Generic` `Structured` class.
 
-## Notes of type checkers / IDEs
-For the most part, `structured` should work with type checkers set to basic levels.  The annotated types present as their unpacked types with a few exceptions.  This is accomplished by using `typing.Annotated`.
-- `int*` and `uint*` present as an `int`
-- `float*` present as `float`.
-- `bool8` presents as `int`.  This may change to `bool` in the future, but it's this way currently because the `?` format specifier packs/unpacks as an `int`.
-- `char` and `pascal` are subclasses of `bytes`, so they have the typechecker limitations below.
-- `array[Header[...], T]` is a subclass of `list[T]`, so it has the typechecker limitations below.
-- `unicode` is a subclass of `str`, so it has the typechecker limitations below.
-
-The limitations for types that are subclasses of their intended type, rather than `typing.Annotated` as such, is most typecheckers will warn you about assignment.  For example:
+Example:
 ```python
 class MyStruct(Structured):
-  items: array[Header[3], int8]
-
-a = MyStruct([1, 2, 3])
-a.items = [4, 5, 6]   # Warning about incompatibility between list and array
-```
-
-To resolve this, you will have to use an alternative syntax: `typing.Annotated`:
-```python
-class MyStruct(Structured):
-  items: Annotated[list[int8], array[Header[3], int8]]
-
-a = MyStruct([1, 2, 3])
-a.items = [4, 5, 6]   # Ok!
-```
-
-## Generic `Structured` classes
-You can also create your `Structured` class as a `typing.Generic`.  Due to details of how `Generic` works, to get a working specialized version, you must subclass the specialization:
-
-```python
-class MyGeneric(Generic[T, U], Structured):
-  a: T
-  b: list[U] = Annotated[list[U], array[Header[10], U]]
-
-
-class ConcreteClass(MyGeneric[uint8, uint32]): pass
-```
-
-One **limitation** here however, you cannot use a generic Structured class as an array object type (as expected at least).  It will act as the base class without specialization (See #8).  So for example, the following code will not work as you expect:
-```python
-class Item(Generic[T], Structured):
-  a: T
-
-class MyStruct(Generic[T], Structured):
-  items: array[Header[10], Item[T]]
-
-class Concrete(MyStruct[uint32]): pass
-
-obj = Concrete.unpack(data)
-assert hasattr(obj.items[0], 'a')
-
-> AssertionError
-```
-
-
-## Dataclass compatibility
-For the most part, `Structured` should be compatible with the `@dataclass`
-decorator.  To suppress the generated `__init__` method and use `@dataclass`s
-instead, pass `init=False` to the subclassing machinery.
-
-NOTE: The unpacking logic requires your class's `__init__` to accept at least
-all of the unpacked fields, *in order*, as arguments. Any extra arguments must
-have defaults supplied. So if you want to write your own or use `@dataclass`s,
-make sure to mark other types as non-initialization variables
-(with `= field(init=False)`). You can further initialize those variables in a
-`__post_init__` method.
-
-Here's an example of mixing both `structured` types and other types, as well as
-using `@dataclass`s generated `__init__`:
-
-```python
-@dataclass
-class MyStruct(Structured, init=False):
   a: int8
-  b: int = field(init=False)
-  _: pad[1] = field(init=False)
-  c: uint16
+  b: char[100]
 
-  def __post_init__(self) -> None:
-    self.b = 0
-
-data = struct.pack('bH', 1, 42)
-a = MyStruct.create_unpack(data)
-print(a)
-
-> MyStruct(a=1, c=42)
+class MyStruct2(Structured):
+  magic: char[4]
+  item: MyStruct
 ```
+
+
+## Custom Types
+When the above are not enough, and your problem is fairly simple, you can use `SerializeAs` to tell
+the `Structured` class how to pack and unpack your custom type. To do so, you choose one of the
+above "basic" types to use as its serialization method, then type-hint with `typing.Annotated` to
+provide that information via a `SerializeAs` object.
+
+For example, say you have a class that encapsulates an integer, providing some custom functionality.
+You can tell your `Structured` class how to pack and unpack it. Say the value will be stored as a
+4-byte unsigned integer:
+
+```python
+class MyInt:
+  _wrapped: int
+
+  def __init__(self, value: int) -> None:
+    self._wrapped = value
+
+  def __index__(self) -> int:
+    return self._wrapped
+
+class MyStruct(Structured):
+  version: Annotated[MyInt, SerializeAs(uint32)]
+```
+
+If you use your type a lot, you can use a `TypeAlias` to make things easier:
+
+```python
+MyInt32: TypeAlias = Annotated[MyInt, SerializeAs(int32)]
+
+class MyStruct(Structured):
+  version: MyInt32
+```
+
+Note a few things required for this to work as expected:
+- Your class needs to accept a single value as its initializer, which is the value unpacked by the
+  serializer you specified in `SerializeAs`.
+- Your class must be compatible with your chosen type for packing as well.  This means:
+  - for integer-like types, it must have an `__index__` method.
+  - for float-like types, it must have a `__float__` method.
+
+Finally, if the `__init__` requirement is too constraining, you can supply a factory method for
+creating your objects from the single unpacked value, and use `SerializeAs.with_factory` instead.
+The factory method must accept the single unpacked value, and return an instance of your type.
+
+
+## The `Structured` class
+The above examples should give you the basics of defining your own `Structured`-derived class, but
+there are a few details and you probably want to know, and *how* to use it to pack and unpack your
+data.
+
+
+### dunders
+- `__init__`: By default, `Structured` generates an `__init__` for your class which requires an
+  initializer for each of the serializable types in your definition. You can block this generated
+  `__init__` by passing `init=False` to the subclassing machinery. Keep in mind, whatever you
+  decide the final class's `__init__` must be compatible with being initialized in the original way
+  (one value provided for each serializable member). Otherwise your class cannot be used as a
+  type-hint or as the item type for `array`.
+- `__eq__`: `Structured` instance can be compared for equality / inequality.  Comparison is done by
+  comparing each of the instance variables that are serialized.  You can of course override this
+  in your subclass to add more checks, and allow `super().__eq__` to handle the serializable types.
+- `__str__`: `Structured` provides a nice string representation with the values of all its
+  serializable types.
+- `__repr__`: The repr is almost identical to `__str__`, just with angled brackets (`<>`).
+
+### Class variables
+There are three public class variables associated with your class:
+- `.serializer`: This is the **serializer** (see: Serializers) used for packing and unpacking the
+  instance variables of your class.
+- `.byte_order`: This is a `ByteOrder` enum value showing the byte order and alignment option used
+  for your class.
+- `.attrs`: This is a tuple containing the names of the attributes which are serialized for you, in
+  the order they were detected as serializable.  This can be helpful when troubleshooting why your
+  class isn't working the way you intended.
+
+### Packing methods
+There are three ways you might pack the data contained in your class, two should be familiar from
+Python's `struct` library:
+- `pack() -> bytes`: This just packs your data into a bytestring and returns it.
+- `pack_into(buffer, offset = 0) -> None`: This packs your data into an object supporting the
+  [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html), starting at the given offset.
+- `pack_write(writable) -> None`: This packs your data, writing to the file-like object `writable`
+  (which should be open in binary mode).
+
+
+### Unpacking methods
+Similar to packing, there are three methods for unpacking data into an already existing instance of
+your class. There are also three similar class methods for creating a new object from freshly
+unpacked data:
+- `unpack(buffer) -> None`: Unpacks data from a bytes-like buffer, assigning values to the instance.
+- `unpack_from(buffer, offset=0) -> None`: Like `unpack`, but works with an object supporting the
+  [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html).
+- `unpack_read(readable)`: Reads data from a file-like object (which should be open in binary mode),
+  unpacking until all instance variables are unpacked.
+- `create_unpack(buffer) -> instance`: Class method that unpacks from a bytes-like buffer to create
+  a new instance of your class.
+- `create_unpack_from(buffer, offset=0) -> instance`: Class method that unpacks from a buffer
+  supporting the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html) to create a new
+  instance of your class.
+- `create_unpack_read(readable) -> instance`: Class method that reads data from a file-like object
+  until enough data has been processed to create a new instance of your class.
+
+
+### Subclassing
+Subclassing from your `Structured`-derived class is very straight-forward. New members are inserted
+after previous one in the serialization order. You can redefine the type of a super-class's member
+and it will not change the order. For example, you could remove a super-class's serializable member
+entirely from serialization, by redefining its type-hint with `None`.
+
+Multiple inheritance from `Structured` classes is not supported (so no diamonds). By default, your
+sub-class must also use the same `ByteOrder` option as its super-class. This is to prevent
+unintended serialization errors, so if you really want to change the `ByteOrder`, you can pass
+`byte_order_mode=ByteOrderMode.OVERRIDE` to the sub-classing machinery.
+
+
+An example of using a different byte order than the super-class:
+```python
+class MyStructLE(Structured, byte_order=ByteOrder.LE):
+  a: int8
+  b: int32
+
+class MyStructBE(MyStructLE, byte_order=ByteOrder.BE, byte_order_mode=ByteOrderMode.OVERRIDE):
+  pass
+```
+
+A simple example of extending:
+```python
+class MyStructV1(Structured):
+  size: uint32
+  a: int8
+  b: char[100]
+
+class MyStructV2(MyStructV2):
+  c: float32
+```
+Here, the sub-class will pack and unpack equivalent to the `struct` format `'Ib100sf'`.
+
+A an example of removing a member from serialization:
+```python
+class MyStruct(Structured):
+  a: int8
+  b: uint32
+  c: float32
+
+class DerivedStruct(MyStruct):
+  b: None
+```
+Here, the sub-class will pack and unpack equivalent to the `struct` format `'bf'`.
+
+
+### Generics
+`Structured` classes can be used with `typing.Generic`, and most things will work the way you want
+with an extra step. In order for your specializations to detect the specialized `TypeVar`s, you must
+subclass the specialization. After doing so, you have a concrete class which should serialize as you
+expect.
+
+Here's an example:
+```python
+class MyGeneric(Generic[T], Structured):
+  a: int32
+  b: T
+```
+This generic class is equivalent to the `struct` format `i`, since it hasn't been specialized yet.
+To make a concrete version, subclass:
+
+```python
+class MyGenericUint32(MyGeneric[uint32]):
+  pass
+```
+This subclass now is equivalent to the `struct` format `iI`.
+
+You can also use `TypeVar`s in `tuple`s, `array`s, `char`s, and `unicode`s, but  similarly you will
+have to sub-class in order to get the concrete implementation of your class.
+
+NOTE: This means using your generic `Structured` class as the element type of `array` or `tuple`
+won't work as expected unless you first sub-class to make the concrete version of it.
+
+
+## Serializers
+For those more interested in what goes on under the hood, or need more access to implement
+serialization of a custom type, read on to learn about what **serializers** are and how they work!
+
+Serializers are use `typing.Generic` and `typing.TypeVarTuple` in their class heirarchy, so if you
+want to include the types the serializer unpacks this *could* help find errors.  For example:
+
+```python
+class MySerializer(Serializer[int, int, float]):
+  ...
+```
+would indicate that this serializer packs and unpacks three items, an `(int, int float)`.
+
+### The API
+The `Serializer` class exposes a public API very similar to that of `struct.Struct`. All of these
+methods must be implemented (unless noted otherwise) in order to work fully.
+
+#### Attributes
+- `.num_values: int`: In most cases this can just be a class variable, this represents the number of
+  items unpacked or packed by the serializer.  For example, a `StructSerializer('2I')` has
+  `num_values == 2`.  Note that `array` has `num_values == 1`, since it unpacks a *single* list.
+- `.size`: This is similar to `struct.Struct.size`.  It holds the number of bytes required for a
+  pack or unpack operation. However unlike `struct.Struct`, the serializer may not know this size
+  until the item(s) have been fully packed or unpacked. For this reason, the `.size` attribute is
+  only required to be up to date with the most recently completed pack or unpack call.
+
+#### Packing methods
+- `.prepack(self, partial_object) -> Serializer` (**not required**): This will be called just prior
+  to any of the pack methods of the `Serializer`, with a (maybe proxy of) the `Structured` object to
+  be packed. This is to allow union serializers (for example) to make decisions based on the state
+  of the object to be packed.  This method should return an appropriate serializer to be used for
+  packing, based on the information contained in `partial_object`.  In most cases, the default
+  implementation will do just fine, which just returns itself unchanged.
+- `.pack(self, *values) -> bytes`: Pack the values according to this serializer's logic. The number
+  of items in `values` must be `.num_values`.  Return the values in packed `bytes` form.
+- `.pack_into(self, buffer, offset, *values) -> None`: Pack the values into an object supporting the
+  [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html), at the given offset.
+- `.pack_write(self, writable, *values) -> None`: Pack the values and write them to the file-like
+  object `writable`.
+
+#### Unpacking methods
+- `.preunpack(self, partial_object) -> Serializer` (**not required**): This will be called just
+  prior to any of the unpack methods of the `Serializer`, with a (maybe proxy of) the `Structured`
+  object to be unpacked. This means the only attributes guaranteed to exist on the object are
+  those that were serialized *before* those handled by this serializer. Again, in most cases the
+  default implementation should work fine, which just returns itself unchanged.
+- `.unpack(self, byteslike) -> Iterable`: Unpack from the bytes-like object, returning the values in
+  an iterable. In most cases, just returning the values in a tuple should be fine. Iterables are
+  supported so that the partial-proxy objects can have their attributes set more easily during
+  unpacking.  Note: the number of values in the iterable must be `.num_values`. NOTE: unlike
+  `struct.unpack`, the byteslike object is not required to be the *exact* length needed for
+  unpacking, only *at least* as long as required.
+- `.unpack_from(self, buffer, offset=0) -> Iterable`: Like `.unpack`, but from an object supporting
+  the [Buffer Protocol](https://docs.python.org/3/c-api/buffer.html), at the given offset.
+- `.unpack_read(self, readable) -> Iterable`: Like `.unpack`, but reading the data from the
+  file-like object `readable`.
+
+#### Other
+- `.with_byte_order(self, byte_order: ByteOrder) -> Serializer)`: Return a (possibly new) serializer
+  configured to use the `ByteOrder` specified.  The default implementation returns itself unchanged,
+  but in most cases this should be overridden with a correct implementation.
+- `.__add__(self, other) -> Serailzer` (**not required**): The final serializer used for a
+ `Structured` class is determined by "adding" all of the individual serializers for each attribute
+ together.  In most cases the default implementation will suffice.  You can provide your own
+ implementation if optimizations can be made (for example, see `StructSerializer`'s implementation).
+
+
+### The "building" Serializers
+There are a few basic serializers used for building others:
+- `NullSerializer`: This is a serializer that packs and unpacks nothing. This will be the serializer
+  used by a `Structured` class if *no* serializable instance variables are detected. It is also used
+  as the starting value to `sum(...)` when generating the final serializer for a `Structured` class.
+- `CompoundSerializer`: This is a generic "chaining" serializer. Most serializers don't have an
+  easy way to combine their logic, so `CompoundSerializer` handles the logic of calling the packing
+  and unpacking methods one after another. This is a common serializer to see as the final
+  serializer for a `Structured` class. This is also an interesting example to see how to handle
+  variable `.size`, and handling `.preunpack` and `.prepack`.
+
+
+### Specific Serializers
+The rest of the Serializer classes are for handling specific serialization types.  They range from
+very simple, to quite complex.
+
+- `StructSerializer`: For packing/unpacking types which can be directly related to a constant
+  `struct` format string.  For example, `uint32` is implemented as
+  `Annotated[int, StructSerializer('I')]`.
+- `StructActionSerializer`: This is the class used for `StructSerializer`-able custom types, but
+  need to perform a custom callable on the result(s) to convert them to their final type.  It is
+  almost identical to `StructSerializer`, but calls an `action` on each value unpacked.
+- `TupleSerializer`: A fairly simple serializer that handles the `tuple` type-hints.
+- `AUnion`: The base for both union serializers.
+- `LookbackDecider`: The union serializer which allows for reading attributes already unpacked on
+  the object to make a decision.
+- `LookaheadDecider`: The union serializer which unpacks a little data then rewinds, using the
+  unpacked value to make a decision.
+- `StructuredSerializer`: A fairly simple serializer to handle translating the `Structured` class
+  methods into the `Serializer` API.
+- `DynamicCharSerializer`: The serializer used to handle `char[uint*]` type-hints.
+- `TerminatedCharSerializer`: The serializer used to handle `char[b'\x00']` type-hints.
+- `UnicodeSerializer`: A wrapper around one of the `char[]` serializers to handle encoding on
+  packing and decoding on unpacking.
+
+
+### Type detection
+This is a very internal-level detail, but may be required if you write your own `Serializer` class.
+
+Almost all of the typehints use `typing.Annotated` to specify the `Serializer` instance to use for
+a hint. In most cases, it's as simple as creating your serializer, then defining a type using this.
+See all of the "basic" types for example.  In some more complicated examples, which are configured
+via the `__class_getitem__` method, these return `Annotated` objects with the correct serializer.
+
+In any case, the `Structured` class detects the serializers by inspecting the `Annotated` objects
+for serializers.  To support things like `a: Annotated[int, int8]`, it even recursively looks inside
+nested `Annotated` objects. For most of this work, `structured` internally uses a singleton object
+`structured.type_checking.annotated` to help extract this information. There is a step to perform
+extra transformations on these `Annotated` extras, that a new `Serializer` you implement might need
+to work.  Check out for example, `TupleSerializer` and `StructuredSerializer` on where that might
+be necessary.
