@@ -464,31 +464,80 @@ Here, the sub-class will pack and unpack equivalent to the `struct` format `'bf'
 
 
 ### Generics
-`Structured` classes can be used with `typing.Generic`, and most things will work the way you want
-with an extra step. In order for your specializations to detect the specialized `TypeVar`s, you must
-subclass the specialization. After doing so, you have a concrete class which should serialize as you
-expect.
+`Structured` classes can be used with `typing.Generic`, and most things will work the way you want,
+with an extra step needed in one case. The `Structured` class behaves this way so as not to
+interfere with the `typing` module's usual features. A "bare" specialization of your class will act
+in the usual way all `typing.Generic` subclasses do: you can use `get_origin`, `get_args`, etc on it
+as usual.
 
-Here's an example:
+In general, in order for your `Structured` class to "know" about the specialization arguments you
+pass to it and work based of that specialization, it must be subclassed.  In many common cases this
+subclassing will be done for you though.  If the `TypeVar` specialization happens *within* another
+`Structured` class, then you don't need to sub-class it yourself.  Even in this case, the type-hints
+are not modified on the class itself, so you can do any type-hint introspection you want and they
+will still behave the usual way the `typing` module would expect.
+
+Here's some examples to show what I mean by the specialization occuring "within" versus not:
+
 ```python
-class MyGeneric(Generic[T], Structured):
-  a: int32
-  b: T
+class Inner(Generic[T, U, V], Structured):
+  a: tuple[T]
+  b: U
+  c: array[Header[4], V]
 ```
-This generic class is equivalent to the `struct` format `i`, since it hasn't been specialized yet.
-To make a concrete version, subclass:
+Here, `Inner` is a generic `Structured` class, and hasn't yet been specialized at all.  So all of
+its type-hints are *not* detected as serializable types.
+
+An example of specializing this class "outside" of the class looks like this:
 
 ```python
-class MyGenericUint32(MyGeneric[uint32]):
+unhappy_object = Inner[int8, float32, bool8].create_unpack(data)
+```
+
+In this case, `Inner` gets fully specialized, but still acts exactly as `typing.Generic` usually
+does: nothing new happens.  The `unhappy_object` gets unpacked just as if you'd never specialized
+`Inner` at all (so it has no attributes serialized). To make an instance of
+`Inner[int8, float32, bool8]`, you'd have to do this:
+
+```python
+class ConcreteInner(Inner[int8, float32, bool8]):
   pass
+happy_object = ConcreteInner.create_unpack(data)
 ```
-This subclass now is equivalent to the `struct` format `iI`.
 
-You can also use `TypeVar`s in `tuple`s, `array`s, `char`s, and `unicode`s, but  similarly you will
-have to sub-class in order to get the concrete implementation of your class.
+An example of specializing this class "inside" of another `Structured class looks like this:
 
-NOTE: This means using your generic `Structured` class as the element type of `array` or `tuple`
-won't work as expected unless you first sub-class to make the concrete version of it.
+```python
+class Outer(Structured):
+  sub_item: Inner[int8, float32, bool8]
+happy_object = Outer.create_unpack(data)
+```
+
+Here, because the specialized `Inner` was used as a type-hint within another `Structured` class,
+and the `TypeVar`s are fully specialized, everything works exactly how you'd want.  The `sub_item`
+instance variable correctly has all of it's attributes (a, b, and c) unpacked as a `tuple[in8]`, a
+`float32`, and a `array[Header[4], bool8]` respectively.
+
+Here's one last example of where this automatic subclassing behavior *doesn't* kick in:
+
+```python
+class Outer2(Generic[T], Structured):
+  sub_item: Inner[int8, float32, T]
+unhappy_object = Outer2[bool8].create_unpack(data)
+```
+
+Here again, `Outer2` is generic and not fully specialized *within* another `Structured` class so
+you'd have to subclass it yourself.  But again, if you use `Outer2` as a fully specialized type-hint
+within another `Structured` class you're good to go with no extra work.
+
+In general:
+- If the outer-most `Structured` is `Generic`, than any `TypeVar`s it uses will *not* be
+  automatically detected for serialization, even when specialized.  You *must* sub-class it yourself
+  to get the final implementation.  Of course, if those `TypeVar`s are never intended to be
+  serializable types (maybe you're using the `TypeVar` for a completely unrelated purpose) then
+  this doesn't really matter.
+- If the outer-most `Structured` class doesn't use `TypeVar`s (isn't `Generic` itself), then
+  everything will automatically be handled for you.
 
 
 ## Serializers

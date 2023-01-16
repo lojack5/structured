@@ -110,6 +110,38 @@ def test_automatic_resolution():
     assert get_type_hints(FullySpecialized1) == get_type_hints(FullySpecialized2)
 
 
+def test_auto_subclassing_simple():
+    # Tests the simple case of auto-subclassing: when a concrete type is
+    # specified from a non-generic container class.
+    class Inner(Generic[U],  Structured):
+        a: U
+
+    class Outer(Structured):
+        a: Inner[uint8]
+
+    assert isinstance(Inner.serializer, NullSerializer)
+    assert isinstance(Outer.serializer, StructuredSerializer)
+    assert Outer.serializer.obj_type.attrs == ('a', )
+
+
+def test_auto_subclassing_complex():
+    # Tests the complicated case of auto-subclassing: when the containing class
+    # is also generic, and later is subclassed.
+    class Inner(Generic[U], Structured):
+        a: U
+
+    class Outer(Generic[U], Structured):
+        a: Inner[U]
+
+    assert isinstance(Outer.serializer, NullSerializer)
+
+    class ConcreteOuter(Outer[uint8]):
+        pass
+
+    assert isinstance(ConcreteOuter.serializer, StructuredSerializer)
+    assert ConcreteOuter.serializer.obj_type.attrs == ('a', )
+
+
 def test_serialized_generics() -> None:
     class Base(Generic[_Size], Structured):
         a: Annotated[list[_Size], array[Header[3], _Size]]
