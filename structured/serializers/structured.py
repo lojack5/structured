@@ -16,8 +16,11 @@ from ..type_checking import (
     TypeVar,
     WritableBuffer,
     annotated,
+    get_args,
+    get_origin,
     safe_issubclass,
 )
+from ..utils import StructuredAlias
 from .api import Serializer
 
 if TYPE_CHECKING:
@@ -31,6 +34,8 @@ else:
 
 class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     """Serializer which unpacks a Structured-derived instance."""
+
+    _specializations: ClassVar[dict] = {}
 
     num_values: ClassVar[int] = 1
     obj_type: type[TStructured]
@@ -64,13 +69,34 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
         return (self.obj_type.create_unpack_read(readable),)
 
-    @staticmethod
-    def _transform(unwrapped: Any, actual: Any) -> Any:
+    @classmethod
+    def _transform(cls, unwrapped: Any, actual: Any) -> Any:
         from ..structured import Structured
 
         for x in (actual, unwrapped):
             if safe_issubclass(x, Structured):
                 return StructuredSerializer(x)
+            elif safe_issubclass((origin := get_origin(x)), Structured):
+                spec_args = get_args(x)
+                key = (origin, spec_args)
+                if all(not isinstance(arg, TypeVar) for arg in spec_args):
+                    # Fully specialized, first try the cache
+                    try:
+                        return cls._specializations[key]
+                    except KeyError:
+                        pass
+
+                    class _Specialized(x):
+                        pass
+
+                    serializer = StructuredSerializer(_Specialized)
+                    cls._specializations[key] = StructuredSerializer(_Specialized)
+                    return serializer
+                else:
+                    # Not fully specialized, return a StructuredAlias so it
+                    # can potentially be fully speciailized by a further
+                    # subclassing of the containing class.
+                    return StructuredAlias(x, spec_args)
 
 
 annotated.register_transform(StructuredSerializer._transform)
