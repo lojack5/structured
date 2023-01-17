@@ -20,6 +20,7 @@ from ..type_checking import (
     ClassVar,
     Iterable,
     ReadableBuffer,
+    WritableBuffer,
     annotated,
     get_union_args,
 )
@@ -34,7 +35,7 @@ class AUnion(Serializer):
     num_values: ClassVar[int] = 1
     result_map: dict[Any, Serializer]
     default: Serializer | None
-    _last_serializer: Serializer | None
+    serializer: Serializer
 
     def __init__(self, result_map: dict[Any, Any], default: Any = None) -> None:
         """result_map should be a mapping of possible return values from `decider`
@@ -48,7 +49,7 @@ class AUnion(Serializer):
             key: self.validate_serializer(serializer)
             for key, serializer in result_map.items()
         }
-        self._last_serializer = self.default
+        self.serializer = self.default    # type: ignore
 
     @staticmethod
     def validate_serializer(hint) -> Serializer:
@@ -61,15 +62,15 @@ class AUnion(Serializer):
 
     @property
     def size(self) -> int:
-        if self._last_serializer:
-            return self._last_serializer.size
+        if self.serializer:
+            return self.serializer.size
         else:
             return 0
 
-    def get_serializer(
-        self, decider_result: Any, partial_object: Any, packing: bool
-    ) -> Serializer:
-        """Given a target used to decide, return a serializer used to unpack."""
+    def set_serializer(self, decider_result: Any) -> None:
+        """Given a target object and decider result, set the current serializer
+        to use for  packing/unpacking.
+        """
         if self.default is None:
             try:
                 serializer = self.result_map[decider_result]
@@ -79,12 +80,35 @@ class AUnion(Serializer):
                 ) from None
         else:
             serializer = self.result_map.get(decider_result, self.default)
-        if packing:
-            serializer = serializer.prepack(partial_object)
-        else:
-            serializer = serializer.preunpack(partial_object)
-        self._last_serializer = serializer
-        return self._last_serializer
+        serializer.preprocess(self.target)
+        self.serializer = serializer
+
+    def decide(self, packing: bool = True) -> None:
+        raise NotImplementedError
+
+    def pack(self, *values: Any) -> bytes:
+        self.decide()
+        return self.serializer.pack(*values)
+
+    def pack_into(self, buffer: WritableBuffer, offset: int, *values) -> None:
+        self.decide()
+        self.serializer.pack_into(buffer, offset, *values)
+
+    def pack_write(self, writable: BinaryIO, *values) -> None:
+        self.decide()
+        self.serializer.pack_write(writable, *values)
+
+    def unpack(self, buffer: ReadableBuffer) -> Iterable:
+        self.decide(False)
+        return self.serializer.unpack(buffer)
+
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
+        self.decide(False)
+        return self.serializer.unpack_from(buffer, offset)
+
+    def unpack_read(self, readable: BinaryIO) -> Iterable:
+        self.decide(False)
+        return self.serializer.unpack_read(readable)
 
     @staticmethod
     def _transform(unwrapped: Any, actual: Any) -> Any:
@@ -120,13 +144,8 @@ class LookbackDecider(AUnion):
         super().__init__(result_map, default)
         self.decider = decider
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, True)
-
-    def preunpack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, False)
+    def decide(self, packing: bool = True) -> None:
+        self.set_serializer(self.decider(self.target))
 
 
 class LookaheadDecider(AUnion):
@@ -151,21 +170,24 @@ class LookaheadDecider(AUnion):
                 'read_ahead_serializer must be a Serializer, got '
                 f'{read_ahead_serializer!r}.'
             )
+        self.decider_result = None
         self.read_ahead_serializer = serializer
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, True)
+    def decide(self, packing: bool = True):
+        if packing:
+            self.set_serializer(self.decider(self.target))
+        else:
+            self.set_serializer(self.decider_result)
 
     def unpack(self, buffer: ReadableBuffer) -> Iterable:
-        result = tuple(self.read_ahead_serializer.unpack(buffer))[0]
-        return self.get_serializer(result, None, False).unpack(buffer)
+        self.decider_result = tuple(self.read_ahead_serializer.unpack(buffer))[0]
+        return super().unpack(buffer)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
-        result = tuple(self.read_ahead_serializer.unpack_from(buffer, offset))[0]
-        return self.get_serializer(result, None, False).unpack_from(buffer, offset)
+        self.decider_result = tuple(self.read_ahead_serializer.unpack_from(buffer, offset))[0]
+        return super().unpack_from(buffer, offset)
 
     def unpack_read(self, readable: BinaryIO) -> Iterable:
-        result = tuple(self.read_ahead_serializer.unpack_read(readable))[0]
+        self.decider_result = tuple(self.read_ahead_serializer.unpack_read(readable))[0]
         readable.seek(-self.read_ahead_serializer.size, os.SEEK_CUR)
-        return self.get_serializer(result, None, False).unpack_read(readable)
+        return super().unpack_read(readable)

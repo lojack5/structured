@@ -116,12 +116,6 @@ class TestCompoundSerializer:
         with pytest.raises(TypeError):
             self.Base1.serializer + 1   # type: ignore
 
-    def test_preprocess(self) -> None:
-        # Sort of a silly test, but here it is
-        preprocessed = self.Base1.serializer.preunpack(None)
-        assert preprocessed is preprocessed.preunpack(None)
-
-
 class TestUnionSerializer:
     def test_lookahead(self) -> None:
         serializer = LookbackDecider(lambda x: 0, {0: int8})

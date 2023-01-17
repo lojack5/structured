@@ -20,11 +20,19 @@ from ..serializers import (
     StructSerializer,
 )
 from ..type_checking import Annotated, Generic, S, Self, T, TypeVar, annotated
-from ..utils import StructuredAlias
+from ..utils import StructuredAlias, HintType, ArgType
 from .basic_types import _SizeTypes
 
 
-class Header:
+class Count(ArgType):
+    name = 'count'
+
+
+class Size(ArgType):
+    name = 'data_size'
+
+
+class Header(HintType):
     """Dispatching class for creating header serializers."""
 
     def __init__(
@@ -36,19 +44,8 @@ class Header:
         self.data_size = data_size
 
     @classmethod
-    def __class_getitem__(cls, args) -> Self:
-        # Unpack arguments
-        if not isinstance(args, tuple):
-            # Length argument only
-            length_kind = args
-            size_kind = None
-        elif len(args) == 2:
-            # Length and size check arguments
-            length_kind, size_kind = args
-        else:
-            raise TypeError(f'{cls.__name__}[] expected 1 or 2 arguments, got {args}')
-        # Indirection so we can cache on the full arguments
-        return cls._create(length_kind, size_kind)
+    def create(cls, count: int | StructSerializer[int], size: None | StructSerializer[int] = None) -> Self:
+        return cls._create(count, size)
 
     @classmethod
     @cache
@@ -57,9 +54,6 @@ class Header:
         length_kind: int | TypeVar | StructSerializer[int],
         size_kind: None | TypeVar | StructSerializer[int],
     ) -> Self:
-        # TypeVar check
-        if isinstance(length_kind, TypeVar) or isinstance(size_kind, TypeVar):
-            return StructuredAlias(cls, (length_kind, size_kind))  # type: ignore
         # Check length argument
         if length_kind in _SizeTypes:
             unwrapped = annotated(StructSerializer[int]).extract(length_kind)

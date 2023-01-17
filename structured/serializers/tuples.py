@@ -32,32 +32,31 @@ class TupleSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
     def size(self) -> int:
         return self.serializer.size
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        self._partial_obj = partial_object
-        return self
+    def preprocess(self, target: Any) -> None:
+        self.serializer.preprocess(target)
 
     def pack(self, values: tuple[Unpack[Ts]]) -> bytes:
-        return self.serializer.prepack(self._partial_obj).pack(*values)
+        return self.serializer.pack(*values)
 
     def pack_into(
         self, buffer: WritableBuffer, offset: int, values: tuple[Unpack[Ts]]
     ) -> None:
-        self.serializer.prepack(self._partial_obj).pack_into(buffer, offset, *values)
+        self.serializer.pack_into(buffer, offset, *values)
 
     def pack_write(self, writable: BinaryIO, values: tuple[Unpack[Ts]]) -> None:
-        self.serializer.prepack(self._partial_obj).pack_write(writable, *values)
+        self.serializer.pack_write(writable, *values)
 
     def preunpack(self, partial_object: Any) -> Serializer:
         self._partial_obj = partial_object
         return self
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Iterable[Any]]:
-        return (self.serializer.preunpack(self._partial_obj).unpack(buffer),)
+        return (self.serializer.unpack(buffer),)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int) -> tuple[Iterable[Any]]:
         return (
-            self.serializer.preunpack(self._partial_obj).unpack_from(buffer, offset),
+            self.serializer.unpack_from(buffer, offset),
         )
 
     def unpack_read(self, readable: BinaryIO) -> tuple[Iterable[Any]]:
-        return (self.serializer.preunpack(self._partial_obj).unpack_read(readable),)
+        return (self.serializer.unpack_read(readable),)

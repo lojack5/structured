@@ -39,7 +39,7 @@ class TestAliasing:
         obj = unicode[_Size]
         assert isinstance(obj, StructuredAlias)
         assert obj.cls is unicode
-        assert obj.args == (_Size, 'utf8')
+        assert obj.args == (_Size, )
         assert obj.resolve(self.tvar_map) is unicode[uint32]
 
     def test_Header(self) -> None:

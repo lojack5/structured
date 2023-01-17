@@ -25,7 +25,7 @@ from ..serializers import (
     static_char_serializer,
 )
 from ..type_checking import Annotated, TypeVar, Union, annotated, cast
-from ..utils import StructuredAlias
+from ..utils import StructuredAlias, HintType, ArgType
 from .basic_types import _SizeTypes, _TSize
 
 
@@ -33,34 +33,38 @@ class NET:
     """Marker class for denoting .NET strings."""
 
 
-class char(bytes, requires_indexing):
+class Count(ArgType):
+    """Helper class for denoting the count argument for char and unicode.
+
+    Usage:
+        char[Count[3]]
+        char[Count[uint32]]
+        char[Count[NET]]
+        char[Count[b'\x00']]
+    """
+    name = 'count'
+
+
+class char(bytes, requires_indexing, HintType):
     """A bytestring, with three ways of denoting length. If size is an integer,
     it is a static size.  If a uint* type is specified, it is prefixed with
     a packed value of that type which holds the length.  If the NET type is
-    specified, uses the variable (1-2 bytes) .NET string size marker.
+    specified, uses the variable (1-2 bytes) .NET string size marker.  If a
+    single byte is specified, it's is interpreted as a terminator byte.
 
         char[3] - statically sized.
         char[uint32] - dynamically sized.
         char[NET] - dynamically sized.
+        char[b'\x00'] - terminated with a NULL byte.
 
     :param size: The size of the bytestring.
-    :type size: Union[int,
+    :type size: Union[int, bytes
                       type[Union[uint8, uint16, uint32, uint64]],
                       type[NET]]
     """
-
-    def __class_getitem__(cls, args) -> TCharSerializer:
-        """Create a char specialization."""
-        if not isinstance(args, tuple):
-            args = (args,)
-        return cls._create(*args)
-
     @classmethod
     @cache
-    def _create(
-        cls,
-        count: Union[int, type[_TSize], type[NET]],
-    ) -> TCharSerializer:
+    def create(cls, count: Union[int, type[_TSize], type[NET], bytes]) -> TCharSerializer:
         if count in _SizeTypes:
             unwrapped = annotated(StructSerializer[int]).extract(count)
             if unwrapped:  # Always True for _SizeTypes
@@ -71,8 +75,6 @@ class char(bytes, requires_indexing):
             serializer = static_char_serializer(count)
         elif count is NET:
             serializer = NETCharSerializer()
-        elif isinstance(count, TypeVar):
-            return StructuredAlias(cls, (count,))  # type: ignore
         elif isinstance(count, bytes):
             serializer = TerminatedCharSerializer(count)
         else:
@@ -109,7 +111,11 @@ class EncoderDecoder:
         raise NotImplementedError
 
 
-class unicode(str, requires_indexing):
+class Encoding(ArgType):
+    name = 'encoding'
+
+
+class unicode(str, requires_indexing, HintType):
     """A char-like type which is automatically encoded when packing and decoded
     when unpacking.  Arguments are the same as for char, with an additional
     optional argument `encoding`.  If encoding is a string, it is the name of
@@ -123,13 +129,6 @@ class unicode(str, requires_indexing):
     :param encoding: Encoding method to use.
     :type encoding: Union[str, type[EncoderDecoder]]
     """
-
-    @classmethod
-    def __class_getitem__(cls, args) -> Serializer[str]:
-        """Create the specialization."""
-        if not isinstance(args, tuple):
-            args = (args,)
-        return cls.create(*args)
 
     @classmethod
     def create(
@@ -155,8 +154,6 @@ class unicode(str, requires_indexing):
         :return: The specialized class.
         """
         # Encoding/Decoding method
-        if isinstance(count, TypeVar):
-            return StructuredAlias(cls, (count, encoding))  # type: ignore
         if isinstance(encoding, str):
             encoder = partial(str.encode, encoding=encoding)
             decoder = partial(bytes.decode, encoding=encoding)

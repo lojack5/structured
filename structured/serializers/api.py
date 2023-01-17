@@ -52,29 +52,13 @@ class Serializer(Generic[Unpack[Ts]]):
     the number of varialbes required for a pack operation.
     """
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        """Perform any state logic needed just prior to a pack operation on
-        `partial_object`. The object will be a fully initialized instance
-        for pack operations, but only a proxy object for unpack operations.
-        Durin unpacking, only the attributes unpacked before this serializer are
-        set on the object.
-
-        :param partial_object: The object being packed or unpacked.
-        :return: A serializer appropriate for unpacking the next attribute(s).
+    def preprocess(self, target: Any) -> None:
+        """Called just prior to a pack or unpack operations.  For packing, the
+        `target` is the actual Structured isntance being packed.  For unpacking,
+        the `target` may be the actual instance, or a proxy object with only the
+        attributes unpacked so far set.
         """
-        return self
-
-    def preunpack(self, partial_object: Any) -> Serializer:
-        """Perform any state logic needed just prior to an unpack operation
-        on `partial_object`. The object will be a fully initialized instance
-        for pack operations, but only a proxy object for unpack operations.
-        Durin unpacking, only the attributes unpacked before this serializer are
-        set on the object.
-
-        :param partial_object: The object being packed or unpacked.
-        :return: A serializer appropriate for unpacking the next attribute(s).
-        """
-        return self
+        self.target = target
 
     def pack(self, *values: Unpack[Ts]) -> bytes:
         """Pack the given values according to this Serializer's logic, returning
@@ -210,23 +194,10 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
             isinstance(serializer, CompoundSerializer) for serializer in serializers
         ):
             raise TypeError('cannot nest CompoundSerializers')
-        self._needs_preprocess = any(
-            ((ts := type(serializer)).prepack, ts.preunpack)
-            != (Serializer.prepack, Serializer.preunpack)
-            for serializer in serializers
-        )
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        return self.preprocess(partial_object)
-
-    def preunpack(self, partial_object: Any) -> Serializer:
-        return self.preprocess(partial_object)
-
-    def preprocess(self, partial_object: Any) -> Serializer:
-        if not self._needs_preprocess:
-            return self
-        else:
-            return _SpecializedCompoundSerializer(self, partial_object)
+    def preprocess(self, target: Any) -> None:
+        for serializer in self.serializers:
+            serializer.preprocess(target)
 
     def _iter_packers(
         self, values: tuple[Unpack[Ts]]
@@ -327,42 +298,3 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
             return NotImplemented
         to_append = self.serializers[:]
         return self._add_impl(serializers, to_append)
-
-
-class _SpecializedCompoundSerializer(
-    Generic[Unpack[Ts]], CompoundSerializer[Unpack[Ts]]
-):
-    """CompoundSerializer that will forward a partial_object to sub-serializers,
-    and update the size of the originating CompoundSerializer.
-    """
-
-    def __init__(self, origin: CompoundSerializer, partial_object: Any) -> None:
-        self.origin = origin
-        self.partial_object = partial_object
-        self.serializers = origin.serializers
-        self.size = origin.size
-        self.num_values = origin.num_values
-
-    def preprocess(self, partial_object: Any) -> Serializer:
-        return self
-
-    def _iter_packers(
-        self, values: tuple[Unpack[Ts]]
-    ) -> Iterable[tuple[Serializer, tuple[Any, ...], int]]:
-        size = 0
-        i = 0
-        for serializer in self.serializers:
-            count = serializer.num_values
-            yield serializer.prepack(self.partial_object), values[i : i + count], size
-            size += serializer.size
-            i += count
-        self.size = size
-        self.origin.size = size
-
-    def _iter_unpackers(self) -> Iterable[tuple[Serializer, int]]:
-        size = 0
-        for serializer in self.serializers:
-            yield serializer.preunpack(self.partial_object), size
-            size += serializer.size
-        self.size = size
-        self.origin.size = size

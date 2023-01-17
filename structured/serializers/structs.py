@@ -127,6 +127,9 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def __str__(self) -> str:
         return f'{type(self).__name__}({self.format}, {self.num_values})'
 
+    def __repr__(self) -> str:
+        return str(self)
+
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
         old_byte_order, fmt = self._split_format
         if old_byte_order is byte_order:

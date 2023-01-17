@@ -1,12 +1,15 @@
 """
 Various utility methods.
 """
+from __future__ import annotations
+
 import operator
 import sys
 import warnings
+import inspect
 from functools import wraps
 
-from .type_checking import Any, Callable, Optional, ParamSpec, T, TypeVar
+from .type_checking import Any, Callable, Optional, ParamSpec, T, TypeVar, ClassVar, Self
 
 if sys.version_info < (3, 10):
     from typing import overload
@@ -81,6 +84,15 @@ class StructuredAlias:
         self.cls = cls
         self.args = args
 
+    def __eq__(self, other: StructuredAlias) -> bool:
+        if isinstance(other, StructuredAlias):
+            return self.cls == other.cls and self.args == other.args
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.cls, self.args))
+
+
     def resolve(self, tvar_map: dict[TypeVar, Any]):
         """Attempt to resolve the specific generic specialization given a map
         of TypeVars to concrete types.  If any TypeVars remain, return a new
@@ -102,6 +114,78 @@ class StructuredAlias:
             return StructuredAlias(self.cls, resolved)
         else:
             return self.cls[resolved]  # type: ignore
+
+
+class ArgType:
+    """Thin wrapper around and object to help with passing arguments to a
+    __class_getitem__ method.
+    """
+    __slots__ = ('value', )
+    name: ClassVar[str]
+    value: Any
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def __eq__(self, other: ArgType) -> bool:
+        if isinstance(other, ArgType):
+            return self.value == other.value and self.name == other.name
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.value))
+
+    def __class_getitem__(cls, args) -> Self:
+        if isinstance(args, tuple):
+            raise TypeError(f'{cls.__name__}[] accepts only a single argument')
+        return cls(args)
+
+
+class HintType:
+    """For classes that create object (in this case Serializers) using a
+    __class_getitem__.  This method handles converting ArgType wrapped arguments
+    into keyword arguments, and calls the class's create method with these
+    arguments.  If caching is desired and your create uses defaulted non-keyword
+    only arguments, you should use the pattern, so the call args are consistent
+    depending on if arguments are supplied as keywords vs positional:
+
+    @classmethod
+    def create(cls, args, keywarg=...):
+        return cls._create(args, kwargs) # Note: all args passed as positional
+
+    @classmethod
+    @cache
+    def _create(cls, args, kwargs):
+        # actual logic
+    """
+
+    alias: ClassVar[bool] = True
+    """alias: If True, this class will return a StructuredAlias object when a
+    TypeVar or StructuredAlias is passed in to its __class_getitem__ method.
+    """
+
+    def __class_getitem__(cls, passed_args):
+        if not isinstance(passed_args, tuple):
+            passed_args = (passed_args, )
+        # Build call arguments
+        args = []
+        kwargs = {}
+        for arg in passed_args:
+            if isinstance(arg, ArgType):
+                kwargs[arg.name] = arg.value
+            elif cls.alias and isinstance(arg, (TypeVar, StructuredAlias)):
+                return StructuredAlias(cls, passed_args)
+            else:
+                args.append(arg)
+        # TODO: Add type checking? Could be hard since many types will actually
+        # be Annotated
+        bound = inspect.signature(cls.create).bind(*args, **kwargs)
+        bound.apply_defaults()
+        return cls.create(*bound.args, **bound.kwargs)
+
+    @classmethod
+    def create(cls, *args, **kwargs):
+        raise NotImplementedError
 
 
 # nice deprecation warnings, ideas taken from Trio

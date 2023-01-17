@@ -21,6 +21,7 @@ from ..type_checking import (
     Union,
     Unpack,
     WritableBuffer,
+    Any,
 )
 from .api import NullSerializer, Serializer
 from .structs import StructSerializer
@@ -96,6 +97,10 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
             raise ValueError(
                 f'Array data size {actual} does not match expected size {expected}'
             )
+
+    def preprocess(self, target: Any) -> None:
+        self.header_serializer.preprocess(target)
+        self.item_serializer.preprocess(target)
 
     def pack(self, *values: Unpack[tuple[list[T]]]) -> bytes:
         data = [b'']
