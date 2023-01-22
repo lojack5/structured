@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.9", "3.10", "3.11", "3.12-dev"]
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
@@ -27,7 +27,7 @@ jobs:
         fetch-depth: 1
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
@@ -43,6 +43,9 @@ jobs:
       uses: psf/black@stable
       with:
         src: "./structured"
+
+    - name: Check formatting with isort
+      run: isort structured
 
     - name: Lint with flake8
       run: |
