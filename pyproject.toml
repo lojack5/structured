@@ -25,9 +25,12 @@ build-backend = 'setuptools.build_meta'
 [tool.setuptools]
 package-dir = {"structured" = "structured"}
 
+[tool.setuptools.dynamic]
+version = {attr = 'structured.__version__'}
+
 [project]
 name = 'structured_classes'
-version = '3.0.1'
+dynamic = ['version']
 authors = [
     { name = 'lojack5' },
 ]
