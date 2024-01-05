@@ -12,9 +12,12 @@ __all__ = [
 ]
 
 from functools import cache, partial
+import math
+from numbers import Real
 
 from ..base_types import requires_indexing
 from ..serializers import (
+    ConsumingCharSerializer,
     DynamicCharSerializer,
     NETCharSerializer,
     Serializer,
@@ -59,7 +62,7 @@ class char(bytes, requires_indexing):
     @cache
     def _create(
         cls,
-        count: Union[int, type[_TSize], type[NET]],
+        count: Union[Real, type[_TSize], type[NET]],
     ) -> TCharSerializer:
         if count in _SizeTypes:
             unwrapped = annotated(StructSerializer[int]).extract(count)
@@ -75,10 +78,12 @@ class char(bytes, requires_indexing):
             return StructuredAlias(cls, (count,))  # type: ignore
         elif isinstance(count, bytes):
             serializer = TerminatedCharSerializer(count)
+        elif isinstance(count, Real) and math.isinf(count):
+            serializer = ConsumingCharSerializer()
         else:
             raise TypeError(
                 f'{cls.__qualname__}[] count must be an int, NET, terminator '
-                f'byte, or uint* type, got {count!r}'
+                f'byte, math.inf, or uint* type, got {count!r}'
             )
         return Annotated[bytes, serializer]  # type: ignore
 

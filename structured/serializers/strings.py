@@ -9,6 +9,7 @@ import struct
 
 __all__ = [
     'TerminatedCharSerializer',
+    'ConsumingCharSerializer',
     'DynamicCharSerializer',
     'NETCharSerializer',
     'static_char_serializer',
@@ -37,6 +38,41 @@ _single_char = StructSerializer[bytes]('s')
 def static_char_serializer(count: int) -> StructSerializer[bytes]:
     """Create a char serializer for statically sized bytes."""
     return _single_char @ count
+
+
+class ConsumingCharSerializer(Serializer[bytes]):
+    """Serializer that uses all remaining bytes in the stream or object as
+    raw bytes.
+    """
+
+    num_values: ClassVar[int] = 1
+
+    def pack(self, *values: Unpack[tuple[bytes]]) -> bytes:
+        return values[0]
+    
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[bytes]]
+    ) -> None:
+        self.size = len(values[0])
+        struct.pack_into(f'{self.size}s', buffer, offset, *values)
+
+    def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[bytes]]) -> None:
+        self.size = len(values[0])
+        writable.write(values[0])
+
+    def unpack(self, buffer: ReadableBuffer) -> tuple[bytes]:
+        self.size = len(buffer)
+        return bytes(buffer),
+    
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
+        mview = memoryview(buffer)
+        self.size = len(mview) - offset
+        return bytes(mview[offset:]),
+
+    def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
+        read_data = readable.read()
+        self.size = len(read_data)
+        return read_data,
 
 
 class DynamicCharSerializer(Serializer[bytes]):
