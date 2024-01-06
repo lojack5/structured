@@ -6,6 +6,7 @@ encoding/decoding.
 
 import io
 import struct
+from typing import NoReturn
 
 __all__ = [
     'TerminatedCharSerializer',
@@ -48,8 +49,9 @@ class ConsumingCharSerializer(Serializer[bytes]):
     num_values: ClassVar[int] = 1
 
     def pack(self, *values: Unpack[tuple[bytes]]) -> bytes:
+        self.size = len(values[0])
         return values[0]
-    
+
     def pack_into(
         self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[bytes]]
     ) -> None:
@@ -62,17 +64,22 @@ class ConsumingCharSerializer(Serializer[bytes]):
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[bytes]:
         self.size = len(buffer)
-        return bytes(buffer),
-    
+        return (bytes(buffer),)
+
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
         mview = memoryview(buffer)
         self.size = len(mview) - offset
-        return bytes(mview[offset:]),
+        return (bytes(mview[offset:]),)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
         read_data = readable.read()
         self.size = len(read_data)
-        return read_data,
+        return (read_data,)
+
+    def __add__(self, other: Serializer) -> NoReturn:
+        raise TypeError(
+            'The char[math.inf] serializer must be the final serializer in a Structured class, as it consumes all remaining bytes'
+        )
 
 
 class DynamicCharSerializer(Serializer[bytes]):

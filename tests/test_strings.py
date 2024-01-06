@@ -1,4 +1,5 @@
 import io
+import math
 import struct
 
 import pytest
@@ -30,6 +31,41 @@ class TestChar:
         unwrapped = annotated(Serializer).extract(char[13])
         assert isinstance(unwrapped, StructSerializer)
         assert unwrapped.format == '13s'
+
+
+    def test_consuming(self) -> None:
+        class Base(Structured):
+            a: int16
+            b: char[math.inf]
+
+        obj = Base(42, b'Hello')
+        test_data = struct.pack('h5s', 42, b'Hello')
+        assert obj.pack() == test_data
+        assert Base.create_unpack(test_data) == obj
+        
+        buffer = bytearray(len(test_data))
+        obj.pack_into(buffer)
+        assert bytes(buffer) == test_data
+        assert Base.create_unpack_from(buffer) == obj
+
+        with io.BytesIO() as stream:
+            obj.pack_write(stream)
+            assert stream.getvalue() == test_data
+            stream.seek(0)
+            assert Base.create_unpack_read(stream) == obj
+
+        obj.b = b'Goodbye'
+        test_data = struct.pack('h7s', 42, b'Goodbye')
+        assert obj.pack() == test_data
+        assert Base.create_unpack(test_data) == obj
+
+        with pytest.raises(TypeError):
+            class Error(Structured):
+                a: int16
+                b: char[10]
+                c: char[math.inf]
+                d: int32
+
 
     def test_dynamic(self) -> None:
         class Base(Structured):

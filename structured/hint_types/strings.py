@@ -11,8 +11,8 @@ __all__ = [
     'NET',
 ]
 
-from functools import cache, partial
 import math
+from functools import cache, partial
 from numbers import Real
 
 from ..base_types import requires_indexing
