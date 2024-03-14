@@ -13,7 +13,6 @@ __all__ = [
 
 import re
 import struct
-import sys
 from functools import cached_property, partial, reduce
 from itertools import chain, repeat
 from typing import overload
@@ -34,8 +33,6 @@ from ..type_checking import (
 )
 from .api import Serializer
 
-_PY_3_12 = sys.version_info >= (3, 12)
-
 
 def noop_action(x: T) -> T:
     """A noop for StructActionSerializers where no additional wrapping is
@@ -46,6 +43,7 @@ def noop_action(x: T) -> T:
 
 def compute_num_values(st: struct.Struct, *, __cache: dict[str, int] = {}) -> int:
     """Determine how many values are used in packing/unpacking a struct format."""
+    print(f'Compute num values: {st!r} {st.format} {st.size}')
     try:
         return __cache[st.format]
     except KeyError:
@@ -109,19 +107,12 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def _split_format(self) -> tuple[ByteOrder, str]:
         return split_byte_order(self.format)
 
-    def __new__(cls, format: str, byte_order: ByteOrder = ByteOrder.DEFAULT) -> Self:
-        if _PY_3_12:
-            return super().__new__(cls, byte_order.value + format)  # type: ignore
-        else:
-            return super().__new__(cls)
-
     def __init__(
         self,
         format: str,
         byte_order: ByteOrder = ByteOrder.DEFAULT,
     ) -> None:
-        if not _PY_3_12:
-            super().__init__(byte_order.value + format)
+        super().__init__(byte_order.value + format)
         self.num_values = compute_num_values(self)
 
     def __str__(self) -> str:
@@ -141,8 +132,7 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
 
         def unpack_from(
             self, buffer: ReadableBuffer, offset: int = 0
-        ) -> tuple[Unpack[Ts]]:
-            ...
+        ) -> tuple[Unpack[Ts]]: ...
 
     def unpack_read(self, readable: BinaryIO) -> tuple[Unpack[Ts]]:
         # NOTE: use super-class's unpack to not interfere with custom
@@ -157,14 +147,12 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     @overload
     def __add__(
         self, other: StructSerializer[Unpack[Ss]]
-    ) -> StructSerializer[Unpack[Ts], Unpack[Ss]]:
-        ...
+    ) -> StructSerializer[Unpack[Ts], Unpack[Ss]]: ...
 
     @overload
     def __add__(
         self, other: Serializer[Unpack[Ss]]
-    ) -> Serializer[Unpack[Ts], Unpack[Ss]]:
-        ...
+    ) -> Serializer[Unpack[Ts], Unpack[Ss]]: ...
 
     def __add__(self, other: Serializer) -> Serializer:
         if isinstance(other, StructSerializer):
@@ -276,14 +264,12 @@ class StructActionSerializer(Generic[Unpack[Ts]], StructSerializer[Unpack[Ts]]):
     @overload
     def __add__(
         self, other: StructSerializer[Unpack[Ss]]
-    ) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]:
-        ...
+    ) -> StructActionSerializer[Unpack[Ts], Unpack[Ss]]: ...
 
     @overload
     def __add__(
         self, other: Serializer[Unpack[Ss]]
-    ) -> Serializer[Unpack[Ts], Unpack[Ss]]:
-        ...
+    ) -> Serializer[Unpack[Ts], Unpack[Ss]]: ...
 
     def __add__(self, other: Serializer) -> Serializer:
         if isinstance(other, StructActionSerializer):

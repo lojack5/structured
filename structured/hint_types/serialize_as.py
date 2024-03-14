@@ -1,6 +1,7 @@
 """
 Class to use with Annotated to specify a custom type for serialization.
 """
+
 from __future__ import annotations
 
 __all__ = [

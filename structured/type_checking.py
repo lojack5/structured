@@ -204,20 +204,18 @@ class _annotated(Generic[Unpack[Ts]]):
         return inst  # type: ignore
 
     @overload
-    def __call__(self, *want_types: type[T]) -> _annotated[T]:
-        ...
+    def __call__(self, *want_types: type[T]) -> _annotated[T]: ...
 
     @overload
-    def __call__(self, *want_types: type[Union[T, U]]) -> _annotated[T, U]:
-        ...
+    def __call__(self, *want_types: type[Union[T, U]]) -> _annotated[T, U]: ...
 
     @overload
-    def __call__(self, *want_types: type[Union[T, U, V]]) -> _annotated[T, U, V]:
-        ...
+    def __call__(self, *want_types: type[Union[T, U, V]]) -> _annotated[T, U, V]: ...
 
     @overload
-    def __call__(self, *want_types: type[Union[T, U, V, W]]) -> _annotated[T, U, V, W]:
-        ...
+    def __call__(
+        self, *want_types: type[Union[T, U, V, W]]
+    ) -> _annotated[T, U, V, W]: ...
 
     def __call__(self, *want_types):
         return _annotated(*want_types)
@@ -227,13 +225,13 @@ annotated = _annotated()
 
 
 @overload
-def safe_issubclass(a, cls: type[T]) -> TypeGuard[type[T]]:
-    ...
+def safe_issubclass(a, cls: type[T]) -> TypeGuard[type[T]]: ...
 
 
 @overload
-def safe_issubclass(a, cls: tuple[Unpack[Ts]]) -> TypeGuard[type[Union[Unpack[Ts]]]]:
-    ...
+def safe_issubclass(
+    a, cls: tuple[Unpack[Ts]]
+) -> TypeGuard[type[Union[Unpack[Ts]]]]: ...
 
 
 def safe_issubclass(a, cls):  # type: ignore

@@ -11,6 +11,7 @@ and one alteration:
  - All unpacking methods may return an iterable of values instead of a tuple.
 For more details, check the docstrings on each method or attribute.
 """
+
 from __future__ import annotations
 
 __all__ = [
