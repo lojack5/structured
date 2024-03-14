@@ -1,6 +1,7 @@
 """
 Various utility methods.
 """
+
 import operator
 import sys
 import warnings
@@ -14,14 +15,12 @@ if sys.version_info < (3, 10):
     from .type_checking import Iterable, S
 
     @overload
-    def zips(iterable1: Iterable[S], *, strict: bool = ...) -> Iterable[tuple[S]]:
-        ...
+    def zips(iterable1: Iterable[S], *, strict: bool = ...) -> Iterable[tuple[S]]: ...
 
     @overload
     def zips(  # noqa: F811
         iterable1: Iterable[S], iterable2: Iterable[T], *, strict: bool = ...
-    ) -> Iterable[tuple[S, T]]:
-        ...
+    ) -> Iterable[tuple[S, T]]: ...
 
     @overload
     def zips(  # noqa: F811
@@ -29,8 +28,7 @@ if sys.version_info < (3, 10):
         iterable2: Iterable[Any],
         *iterables: Iterable[Any],
         strict: bool = ...,
-    ) -> Iterable[tuple[Any, ...]]:
-        ...
+    ) -> Iterable[tuple[Any, ...]]: ...
 
     def zips(*iterables: Iterable, strict: bool = False):  # noqa: F811
         """Python 3.9 compatible way of emulating zip(..., strict=True)"""

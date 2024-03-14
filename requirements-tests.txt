@@ -2,9 +2,9 @@
 -r requirements.txt
 
 # Tests / linting / formatters
-pytest~=7.2.1
-pytest-cov~=4.0.0
-black~=22.12.0
-isort~=5.11.4
-flake8~=6.0.0
-Flake8-pyproject~=1.2.2
+pytest~=8.1.1
+pytest-cov~=4.1.0
+black~=24.2.0
+isort~=5.13.2
+flake8~=7.0.0
+Flake8-pyproject~=1.2.3

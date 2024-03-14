@@ -2,6 +2,7 @@
 Char and Unicode typhint classes, which dispatch to the appropriate serializer
 based on provided specialization args.
 """
+
 __all__ = [
     'EncoderDecoder',
     'unicode',

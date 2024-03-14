@@ -334,7 +334,7 @@ class Structured(metaclass=StructuredMeta):
         return f'<{self}>'
 
     def __eq__(self, other) -> bool:
-        if type(other) == type(self):
+        if type(other) is type(self):
             return all(
                 (getattr(self, attr) == getattr(other, attr) for attr in self.attrs)
             )
