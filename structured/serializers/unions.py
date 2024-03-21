@@ -20,6 +20,7 @@ from ..type_checking import (
     ClassVar,
     Iterable,
     ReadableBuffer,
+    WritableBuffer,
     annotated,
     get_union_args,
 )
@@ -48,7 +49,7 @@ class AUnion(Serializer):
             key: self.validate_serializer(serializer)
             for key, serializer in result_map.items()
         }
-        self._last_serializer = self.default
+        self.size = 0
 
     @staticmethod
     def validate_serializer(hint) -> Serializer:
@@ -59,16 +60,15 @@ class AUnion(Serializer):
             raise ValueError('Union results must serializer a single item.')
         return serializer
 
-    @property
-    def size(self) -> int:
-        if self._last_serializer:
-            return self._last_serializer.size
-        else:
-            return 0
+    def prepack(self, partial_object) -> Serializer:
+        self._partial_object = partial_object
+        return self
+    
+    def preunpack(self, partial_object) -> Serializer:
+        self._partial_object = partial_object
+        return self
 
-    def get_serializer(
-        self, decider_result: Any, partial_object: Any, packing: bool
-    ) -> Serializer:
+    def get_serializer(self, decider_result: Any, packing: bool) -> Serializer:
         """Given a target used to decide, return a serializer used to unpack."""
         if self.default is None:
             try:
@@ -80,11 +80,9 @@ class AUnion(Serializer):
         else:
             serializer = self.result_map.get(decider_result, self.default)
         if packing:
-            serializer = serializer.prepack(partial_object)
+            return serializer.prepack(self._partial_object)
         else:
-            serializer = serializer.preunpack(partial_object)
-        self._last_serializer = serializer
-        return self._last_serializer
+            return serializer.preunpack(self._partial_object)
 
     @staticmethod
     def _transform(unwrapped: Any, actual: Any) -> Any:
@@ -120,13 +118,43 @@ class LookbackDecider(AUnion):
         super().__init__(result_map, default)
         self.decider = decider
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, True)
+    def decide(self, packing: bool) -> Serializer:
+        result = self.decider(self._partial_object)
+        return self.get_serializer(result, packing)
 
-    def preunpack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, False)
+    def pack(self, *values: Any) -> bytes:
+        serializer = self.decide(True)
+        data = serializer.pack(*values)
+        self.size = serializer.size
+        return data
+    
+    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+        serializer = self.decide(True)
+        serializer.pack_into(buffer, offset, *values)
+        self.size = serializer.size
+
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
+        serializer = self.decide(True)
+        serializer.pack_write(writable, *values)
+        self.size = serializer.size
+
+    def unpack(self, buffer: ReadableBuffer) -> Iterable:
+        serializer = self.decide(False)
+        value = serializer.unpack(buffer)
+        self.size = serializer.size
+        return value
+    
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
+        serializer = self.decide(False)
+        value = serializer.unpack_from(buffer, offset)
+        self.size = serializer.size
+        return value
+    
+    def unpack_read(self, readable: BinaryIO) -> Iterable:
+        serializer = self.decide(False)
+        value = serializer.unpack_read(readable)
+        self.size = serializer.size
+        return value
 
 
 class LookaheadDecider(AUnion):
@@ -153,19 +181,43 @@ class LookaheadDecider(AUnion):
             )
         self.read_ahead_serializer = serializer
 
-    def prepack(self, partial_object: Any) -> Serializer:
-        result = self.decider(partial_object)
-        return self.get_serializer(result, partial_object, True)
+    def pack(self, *values: Any) -> bytes:
+        result = self.decider(self._partial_object)
+        serializer = self.get_serializer(result, True)
+        data = serializer.pack(*values)
+        self.size = serializer.size
+        return data
+    
+    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
+        result = self.decider(self._partial_object)
+        serializer = self.get_serializer(result, True)
+        serializer.pack_into(buffer, offset, *values)
+        self.size = serializer.size
+
+    def pack_write(self, writable: BinaryIO, *values: Any) -> None:
+        result = self.decider(self._partial_object)
+        serializer = self.get_serializer(result, True)
+        serializer.pack_write(writable, *values)
+        self.size = serializer.size
 
     def unpack(self, buffer: ReadableBuffer) -> Iterable:
         result = tuple(self.read_ahead_serializer.unpack(buffer))[0]
-        return self.get_serializer(result, None, False).unpack(buffer)
+        serializer = self.get_serializer(result, False)
+        values = serializer.unpack(buffer)
+        self.size = serializer.size
+        return values
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
         result = tuple(self.read_ahead_serializer.unpack_from(buffer, offset))[0]
-        return self.get_serializer(result, None, False).unpack_from(buffer, offset)
+        serializer = self.get_serializer(result, False)
+        values = serializer.unpack_from(buffer, offset)
+        self.size = serializer.size
+        return values
 
     def unpack_read(self, readable: BinaryIO) -> Iterable:
         result = tuple(self.read_ahead_serializer.unpack_read(readable))[0]
         readable.seek(-self.read_ahead_serializer.size, os.SEEK_CUR)
-        return self.get_serializer(result, None, False).unpack_read(readable)
+        serializer = self.get_serializer(result, False)
+        values = serializer.unpack_read(readable)
+        self.size = serializer.size
+        return values

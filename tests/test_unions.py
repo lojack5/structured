@@ -33,7 +33,8 @@ def test_errors() -> None:
     # No default specified, and decider returned an invalid value
     serializer = LookbackDecider(attrgetter('a'), {1: int32}, None)
     with pytest.raises(ValueError):
-        serializer.prepack(a)
+        serializer = serializer.prepack(a)
+        serializer.pack(1)
 
 
 def test_lookback() -> None:

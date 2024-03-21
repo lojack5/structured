@@ -285,7 +285,7 @@ class Structured(metaclass=StructuredMeta):
         """Create a proxy object for this class, which can be used to create
         new instances of this class.
         """
-        proxy = _Proxy(cls.attrs)
+        proxy = _Proxy(cls)
         return proxy, cls.serializer.preunpack(proxy)
 
     @classmethod
@@ -464,8 +464,9 @@ class _Proxy:
 
     # NOTE: Only using __dunder__ methods, so any attributes on the class this
     # is a proxy for won't be shadowed.
-    def __init__(self, attrs: tuple[str, ...]) -> None:
-        self.__attrs = attrs
+    def __init__(self, cls: type[Structured]) -> None:
+        self.__attrs = cls.attrs
+        self.cls = cls
 
     def __call__(self, values: Iterable[Any]) -> None:
         for attr, value in zips(self.__attrs, values, strict=True):

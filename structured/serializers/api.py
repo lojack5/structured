@@ -10,6 +10,17 @@ and one alteration:
  - Modified packing method `pack`
  - All unpacking methods may return an iterable of values instead of a tuple.
 For more details, check the docstrings on each method or attribute.
+
+A note on "container" serializers (for example, CompoundSerializer and
+ArraySerializer): Due to the posibility of recursive nesting via the
+`typing.Self` type-hint as a serializable type, care must be taken with
+delegating to sub-serializers. In particular, only updating `self.size` at the
+*end* of a pack/unpack operation ensures that nested usages of the same
+serializer won't overwrite intermediate values.
+
+Similarly (although this is true regardless of nesting), you almost always want
+a custom `prepack` and `preunpack` method, to pass that information along to
+the nested serializers.
 """
 
 from __future__ import annotations

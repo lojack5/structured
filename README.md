@@ -158,6 +158,9 @@ All other types fall into the "complex" category.  They currently consist of:
 - `unions`: Unions of serializable types are supported as well.
 - `Structured`-derived types: You can use any of your `Structured`-derived classes as a type-hint,
   and the variable will be serialized as well.
+- `typing.Self`: This type-hint denotes that the attribute should be unpacked as an instance of
+  the containing class itself.  Note that due to the recursive posibilities this allows, care
+  must be taken to avoid hitting the recursion limit of Python.
 
 
 ### Tuples

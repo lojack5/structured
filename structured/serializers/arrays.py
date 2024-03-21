@@ -96,26 +96,38 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
             raise ValueError(
                 f'Array data size {actual} does not match expected size {expected}'
             )
+        
+    def prepack(self, partial_object) -> Self:
+        self._partial_object = partial_object
+        return self
+
+    def preunpack(self, partial_object) -> Self:
+        self._partial_object = partial_object
+        return self
 
     def pack(self, *values: Unpack[tuple[list[T]]]) -> bytes:
         data = [b'']
-        self.size = header_size = self.header_serializer.size
+        size = header_size = self.header_serializer.size
+        item_serializer = self.item_serializer.prepack(self._partial_object)
         for item in values[0]:
-            data.append(self.item_serializer.pack(item))
-            self.size += self.item_serializer.size
-        header_values = self._header_pack_values(values[0], self.size - header_size)
+            data.append(item_serializer.pack(item))
+            size += item_serializer.size
+        header_values = self._header_pack_values(values[0], size - header_size)
         data[0] = self.header_serializer.pack(*header_values)
+        self.size = size
         return b''.join(data)
 
     def pack_into(
         self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[list[T]]]
     ) -> None:
         items = values[0]
-        self.size = header_size = self.header_serializer.size
+        size = header_size = self.header_serializer.size
+        item_serializer = self.item_serializer.prepack(self._partial_object)
         for item in items:
-            self.item_serializer.pack_into(buffer, offset + self.size, item)
-            self.size += self.item_serializer.size
-        header_values = self._header_pack_values(items, self.size - header_size)
+            item_serializer.pack_into(buffer, offset + size, item)
+            size += item_serializer.size
+        header_values = self._header_pack_values(items, size - header_size)
+        self.size = size
         self.header_serializer.pack_into(buffer, offset, *header_values)
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[list[T]]]) -> None:
@@ -125,34 +137,40 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
     def unpack(self, buffer: ReadableBuffer) -> tuple[list[T]]:
         header = self.header_serializer.unpack(buffer)
         count, data_size = self._header_unpack_values(*header)
-        self.size = header_size = self.header_serializer.size
+        size = header_size = self.header_serializer.size
+        item_serializer = self.item_serializer.preunpack(self._partial_object)
         items = []
         for _ in range(count):
-            items.extend(self.item_serializer.unpack(buffer[self.size :]))
-            self.size += self.item_serializer.size
-        self._check_data_size(data_size, self.size - header_size)
+            items.extend(item_serializer.unpack(buffer[size :]))
+            size += item_serializer.size
+        self._check_data_size(data_size, size - header_size)
+        self.size = size
         return (items,)
 
     def unpack_from(self, buffer: ReadableBuffer, offset: int) -> tuple[list[T]]:
         header = self.header_serializer.unpack_from(buffer, offset)
         count, data_size = self._header_unpack_values(*header)
-        self.size = header_size = self.header_serializer.size
+        size = header_size = self.header_serializer.size
+        item_serializer = self.item_serializer.preunpack(self._partial_object)
         items = []
         for _ in range(count):
-            items.extend(self.item_serializer.unpack_from(buffer, offset + self.size))
-            self.size += self.item_serializer.size
-        self._check_data_size(data_size, self.size - header_size)
+            items.extend(item_serializer.unpack_from(buffer, offset + size))
+            size += item_serializer.size
+        self._check_data_size(data_size, size - header_size)
+        self.size = size
         return (items,)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[list[T]]:
         header = self.header_serializer.unpack_read(readable)
         count, data_size = self._header_unpack_values(*header)
-        self.size = header_size = self.header_serializer.size
+        size = header_size = self.header_serializer.size
+        item_serializer = self.item_serializer.preunpack(self._partial_object)
         items = []
         for _ in range(count):
-            items.extend(self.item_serializer.unpack_read(readable))
-            self.size += self.item_serializer.size
-        self._check_data_size(data_size, self.size - header_size)
+            items.extend(item_serializer.unpack_read(readable))
+            size += item_serializer.size
+        self._check_data_size(data_size, size - header_size)
+        self.size = size
         return (items,)
 
 
