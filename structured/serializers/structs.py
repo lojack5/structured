@@ -43,7 +43,6 @@ def noop_action(x: T) -> T:
 
 def compute_num_values(st: struct.Struct, *, __cache: dict[str, int] = {}) -> int:
     """Determine how many values are used in packing/unpacking a struct format."""
-    print(f'Compute num values: {st!r} {st.format} {st.size}')
     try:
         return __cache[st.format]
     except KeyError:
