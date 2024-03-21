@@ -7,22 +7,16 @@ __all__ = [
 ]
 
 
-from ..type_checking import (
-    Any,
-    ClassVar,
-    TYPE_CHECKING,
-    annotated,
-    Self,
-)
+from ..type_checking import TYPE_CHECKING, Any, ClassVar, Self, annotated
 from .api import Serializer
 from .structured import StructuredSerializer
-
 
 if TYPE_CHECKING:
     from ..structured import Structured, _Proxy
 else:
     Structured = 'Structured'
     _Proxy = '_Proxy'
+
 
 class SelfSerializer(Serializer[Structured]):
     num_values: ClassVar[int] = 1

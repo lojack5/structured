@@ -96,7 +96,7 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
             raise ValueError(
                 f'Array data size {actual} does not match expected size {expected}'
             )
-        
+
     def prepack(self, partial_object) -> Self:
         self._partial_object = partial_object
         return self
@@ -141,7 +141,7 @@ class ArraySerializer(Generic[T], Serializer[list[T]]):
         item_serializer = self.item_serializer.preunpack(self._partial_object)
         items = []
         for _ in range(count):
-            items.extend(item_serializer.unpack(buffer[size :]))
+            items.extend(item_serializer.unpack(buffer[size:]))
             size += item_serializer.size
         self._check_data_size(data_size, size - header_size)
         self.size = size

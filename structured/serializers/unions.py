@@ -63,7 +63,7 @@ class AUnion(Serializer):
     def prepack(self, partial_object) -> Serializer:
         self._partial_object = partial_object
         return self
-    
+
     def preunpack(self, partial_object) -> Serializer:
         self._partial_object = partial_object
         return self
@@ -127,7 +127,7 @@ class LookbackDecider(AUnion):
         data = serializer.pack(*values)
         self.size = serializer.size
         return data
-    
+
     def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
         serializer = self.decide(True)
         serializer.pack_into(buffer, offset, *values)
@@ -143,13 +143,13 @@ class LookbackDecider(AUnion):
         value = serializer.unpack(buffer)
         self.size = serializer.size
         return value
-    
+
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> Iterable:
         serializer = self.decide(False)
         value = serializer.unpack_from(buffer, offset)
         self.size = serializer.size
         return value
-    
+
     def unpack_read(self, readable: BinaryIO) -> Iterable:
         serializer = self.decide(False)
         value = serializer.unpack_read(readable)
@@ -187,7 +187,7 @@ class LookaheadDecider(AUnion):
         data = serializer.pack(*values)
         self.size = serializer.size
         return data
-    
+
     def pack_into(self, buffer: WritableBuffer, offset: int, *values: Any) -> None:
         result = self.decider(self._partial_object)
         serializer = self.get_serializer(result, True)

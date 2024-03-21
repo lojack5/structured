@@ -62,19 +62,19 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     def unpack(self, buffer: ReadableBuffer) -> tuple[TStructured]:
         value = self.obj_type.create_unpack(buffer)
         self.size = self.obj_type.serializer.size
-        return (value, )
+        return (value,)
 
     def unpack_from(
         self, buffer: ReadableBuffer, offset: int = 0
     ) -> tuple[TStructured]:
         value = self.obj_type.create_unpack_from(buffer, offset)
         self.size = self.obj_type.serializer.size
-        return (value, )
+        return (value,)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
         value = self.obj_type.create_unpack_read(readable)
         self.size = self.obj_type.serializer.size
-        return (value, )
+        return (value,)
 
     @classmethod
     def _transform(cls, unwrapped: Any, actual: Any) -> Any:
