@@ -7,7 +7,7 @@ def standard_tests(target_obj: Structured, target_data: bytes):
     target_size = len(target_data)
     assert target_obj.pack() == target_data
     assert type(target_obj).create_unpack(target_data) == target_obj
-    assert target_obj.serializer.size == target_size
+    assert target_obj.serializer.size == target_size, f'{target_obj.serializer.size} != {target_size}'
 
     buffer = bytearray(len(target_data))
     target_obj.pack_into(buffer)

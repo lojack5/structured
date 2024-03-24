@@ -42,32 +42,39 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
 
     def __init__(self, obj_type: type[TStructured]) -> None:
         self.obj_type = obj_type
-
-    @property
-    def size(self) -> int:
-        return self.obj_type.serializer.size
+        self.size = 0
 
     def pack(self, values: TStructured) -> bytes:
-        return values.pack()
+        data = values.pack()
+        self.size = values.serializer.size
+        return data
 
     def pack_into(
         self, buffer: WritableBuffer, offset: int, values: TStructured
     ) -> None:
         values.pack_into(buffer, offset)
+        self.size = values.serializer.size
 
     def pack_write(self, writable: BinaryIO, values: TStructured) -> None:
         values.pack_write(writable)
+        self.size = values.serializer.size
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack(buffer),)
+        value = self.obj_type.create_unpack(buffer)
+        self.size = self.obj_type.serializer.size
+        return (value,)
 
     def unpack_from(
         self, buffer: ReadableBuffer, offset: int = 0
     ) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack_from(buffer, offset),)
+        value = self.obj_type.create_unpack_from(buffer, offset)
+        self.size = self.obj_type.serializer.size
+        return (value,)
 
     def unpack_read(self, readable: BinaryIO) -> tuple[TStructured]:
-        return (self.obj_type.create_unpack_read(readable),)
+        value = self.obj_type.create_unpack_read(readable)
+        self.size = self.obj_type.serializer.size
+        return (value,)
 
     @classmethod
     def _transform(cls, unwrapped: Any, actual: Any) -> Any:
