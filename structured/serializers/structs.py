@@ -122,7 +122,7 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
         if old_byte_order is byte_order:
             return self
         else:
-            return StructSerializer(fmt, byte_order)
+            return type(self)(fmt, byte_order)
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[Unpack[Ts]]:
         return super().unpack(buffer[: self.size])  # type: ignore
