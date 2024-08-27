@@ -49,18 +49,19 @@ class TestCustomType:
                 else:
                     return self._value == other
 
-        class Base(Structured):
-            a: Annotated[MutableType, SerializeAs(int16)]
-            b: Annotated[MutableType, SerializeAs(uint32)]
-        assert isinstance(Base.serializer, StructActionSerializer)
-        assert Base.serializer.actions == (MutableType, MutableType)
-        target_obj = Base(MutableType(11), MutableType(42))
-        target_data = Base.serializer.pack(11, 42)
+        for bo in ByteOrder:
+            class Base(Structured, byte_order=bo):
+                a: Annotated[MutableType, SerializeAs(int16)]
+                b: Annotated[MutableType, SerializeAs(uint32)]
+            assert isinstance(Base.serializer, StructActionSerializer)
+            assert Base.serializer.actions == (MutableType, MutableType)
+            target_obj = Base(MutableType(11), MutableType(42))
+            target_data = Base.serializer.pack(11, 42)
 
-        standard_tests(target_obj, target_data)
+            standard_tests(target_obj, target_data)
 
-        b = Base.create_unpack(target_data)
-        assert isinstance(b.a, MutableType)
+            b = Base.create_unpack(target_data)
+            assert isinstance(b.a, MutableType)
 
 
     def test_custom_action(self) -> None:
