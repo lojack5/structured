@@ -24,7 +24,7 @@ def test_counted() -> None:
     with pytest.raises(TypeError):
         pad['']
     with pytest.raises(ValueError):
-        pad[0]
+        pad[-1]
 
 
 class TestCustomType:
