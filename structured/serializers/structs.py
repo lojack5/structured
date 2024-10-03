@@ -31,7 +31,7 @@ from ..type_checking import (
     Ts,
     Unpack,
 )
-from .api import Serializer
+from .api import NullSerializer, Serializer
 
 
 def noop_action(x: T) -> T:
@@ -187,8 +187,10 @@ class StructSerializer(Generic[Unpack[Ts]], struct.Struct, Serializer[Unpack[Ts]
     def _mul_impl(self, other: int, combine_strings: bool = False) -> Self:
         if not isinstance(other, int):
             return NotImplemented
-        elif other <= 0:
-            raise ValueError('count must be positive')
+        elif other == 0:
+            return NullSerializer()
+        elif other < 0:
+            raise ValueError('count must be non-negative')
         elif other == 1:
             return self
         byte_order, fmt = self._split_format

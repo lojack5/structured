@@ -155,6 +155,16 @@ def test_dynamic_format():
     standard_tests(target_obj, target_data)
 
 
+def test_zero_length():
+    class EmptyList(Structured):
+        a: array[Header[uint32], uint8]
+
+    target_obj = EmptyList([])
+    target_data = struct.pack('I', 0)
+
+    standard_tests(target_obj, target_data)
+
+
 def test_dynamic_structured(items: list[Item]):
     class Compound(Structured):
         a: array[Header[uint32], Item]

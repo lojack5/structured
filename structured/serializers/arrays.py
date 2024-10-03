@@ -235,7 +235,7 @@ class DynamicStructArraySerializer(Generic[T], Serializer[list[T]]):
     ) -> None:
         self.count_serializer = count_serializer
         self.item_serializer = item_serializer
-        self.num_values = 1
+        self.num_values = 0
         self.size = 0
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
@@ -247,7 +247,11 @@ class DynamicStructArraySerializer(Generic[T], Serializer[list[T]]):
     def _packer(self, values: tuple[list[T]]) -> tuple[Serializer, list[T]]:
         items = values[0]
         count = len(items)
-        serializer = self.count_serializer + (self.item_serializer * count)
+        if count == 0:
+            # Since we'll be modifying its .num_values, we want a copy
+            serializer = StructSerializer(self.count_serializer.format)
+        else:
+            serializer = self.count_serializer + (self.item_serializer * count)
         serializer.num_values -= 1
         self.size = serializer.size
         return serializer, items
