@@ -149,18 +149,19 @@ class _annotated(Generic[Unpack[Ts]]):
                     yield from _iter(sub_h, start=1)
             else:
                 yield h
+
         return tuple(_iter(hint))
 
     def transform(self, typehint: Any):
         base_type, *annotations = self.flatten_Annotated(typehint)
-        annotations = (None, ) + tuple(annotations)
+        annotations = (None,) + tuple(annotations)
         for annotation in annotations:
             for transform in reversed(self._transforms):
                 new_type = transform(base_type, annotation)
                 if new_type is not None:
                     base_type = new_type
         return base_type
-    
+
     @classmethod
     def register_final_transform(cls, transform: Callable[[Any, Any], Any]):
         cls._transforms.insert(0, transform)
