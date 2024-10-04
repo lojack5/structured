@@ -28,8 +28,8 @@ class SelfSerializer(Serializer[Structured]):
         return StructuredSerializer(partial_object.cls)
 
     @classmethod
-    def _transform(cls, unwrapped: Any, actual: Any) -> Any:
-        if unwrapped is Self:
+    def _transform(cls, base_type: Any, hint: Any) -> Any:
+        if base_type is Self:
             return cls()
 
 

@@ -63,11 +63,8 @@ class char(bytes, requires_indexing):
         count: Union[int, type[_TSize], type[NET]],
     ) -> TCharSerializer:
         if count in _SizeTypes:
-            unwrapped = annotated(StructSerializer[int]).extract(count)
-            if unwrapped:  # Always True for _SizeTypes
-                serializer = DynamicCharSerializer(unwrapped)
-            else:
-                raise RuntimeError('Internal error')
+            count = annotated.transform(count)
+            serializer = DynamicCharSerializer(count)
         elif isinstance(count, int):
             serializer = static_char_serializer(count)
         elif count is NET:
@@ -170,7 +167,7 @@ class unicode(str, requires_indexing):
             decoder = encoding.decode
         else:
             raise TypeError('An encoding or an EncoderDecoder must be specified.')
-        serializer = annotated(Serializer).extract(char[count])
+        serializer = annotated.transform(char[count])
         serializer = cast(TCharSerializer, serializer)  # definitely is at this point
         return Annotated[
             str, UnicodeSerializer(serializer, encoder, decoder)
