@@ -23,6 +23,7 @@ with open('some_file.dat', 'rb') as ins:
     - [Basic Types](#basic-types)
     - [Complex Types](#complex-types)
     - [Custom Types](#custom-types)
+    - [Modifiers](#modifiers)
 2. [The `Structured` class](#the-structured-class)
 3. [Generics](#generics)
 4. [Serializers](#serializers)
@@ -359,6 +360,57 @@ Note a few things required for this to work as expected:
 Finally, if the `__init__` requirement is too constraining, you can supply a factory method for
 creating your objects from the single unpacked value, and use `SerializeAs.with_factory` instead.
 The factory method must accept the single unpacked value, and return an instance of your type.
+
+
+## Modifiers
+These are additional objects that you can include in an `Annotated[...]` to modify how a hinted serialized type is packed/unpacked. Currently, there is only `Condition`.
+
+### `Condition`
+The `Condition` object signals to `Structured` that the hinted attribute should only be considered a serializable type if a certain condition is met. For example, a data structure that has fields added or removed as new versions are made. You could provide different  Structured`-derived classes for these versions, but this opens you up to errors resulting from keeping those definition in sync with each other.
+
+To use, create a `Condition` object:
+```python
+# NOTE: using Python 3.11+ syntax to demonstrate the signature here
+Condition[T: Structured](condition: Callable[[T], bool], *defaults)
+```
+
+and include it in an `Annotated[...]` for a serializable type:
+```python
+class VersionedStruct(Structured, byte_order=ByteOrder.NETWORK):
+  version: uint8
+  v1_field: Annotated[uint8, Condition(lambda s: s.version >= 1, 0)]
+  v3_field: Annotated[uint32, Condition(lambda s: s.version >= 3, 0)]
+  v2_field: Annotated[float32, Condition(lambda s: s.version >= 3, 0.0)]
+```
+
+A `Condition` takes a callable that accepts your `Structured` class\* and returns a `bool`, as well as a default value for the attribute. The callable will be called just prior to packing/unpacking the attribute to evaluate the condition. On a `True` condition valuation, the attribute will pack/unpack\* as if hinted without the `Condition`. On a `False` condition evaluation, the attribute will be skipped for packing, or set to the default value (without touching the input data stream).
+
+> [!NOTE]
+> For unpacking, the object sent to the condition is actually a proxy object. This object has the > same serialized attributes as the actual `Structured`-derived class, but only those that have > already been de-serialized.
+
+> [!CAUTION]
+> For simple types (those that have direct `struct.pack` translations) some care is needed.
+
+Recall that `struct` inserts padding alignment bytes where needed between format specifiers. So for example:
+```python
+>>> struct.pack('BI', 1, 2)
+b'\x01\x00\x00\x00\x02\x00\x00\x00`
+```
+Here, 3 padding bytes were inserted between the `uint8` and the `uint16`. The padding inserted depends on the platform and the byte-order specifier used.
+
+Now consider these two `Structured` classes:
+```python
+class MyStruct1(Structured):
+  version: uint8
+  value: uint32
+
+class MyStruct2(Structured):
+  version: uint8
+  value: Annotated[uint32, Condition(lambda s: True, 0)]
+```
+These two classes will not, in general, pack/unpack the same, even though the `Condition` is always True! This is because for `MyStruct1`, the members are serialized as `BI`. But for `MyStruct2`, they are serialized as `B` followed by `I`, so no padding bytes are inserted ever.
+
+To deal with situations like these, you either need to manually handle the padding bytes yourself (also guarded with a `Condition`), or if possible use a byte order specification that does not insert padding bytes (for example, `ByteOrder.NETWORK`).
 
 
 ## The `Structured` class
