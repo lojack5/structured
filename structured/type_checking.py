@@ -21,6 +21,7 @@ from typing import (
     Generic,
     Iterable,
     Iterator,
+    Literal,
     NewType,
     NoReturn,
     Optional,

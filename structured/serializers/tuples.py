@@ -28,6 +28,9 @@ class TupleSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
     def __init__(self, serializers: Iterable[Serializer]) -> None:
         self.serializer = sum(serializers, NullSerializer())
 
+    def get_final(self) -> Serializer | None:
+        return self.serializer.get_final()
+
     @property
     def size(self) -> int:
         return self.serializer.size

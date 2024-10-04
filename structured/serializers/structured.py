@@ -44,6 +44,9 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
         self.obj_type = obj_type
         self.size = 0
 
+    def get_final(self) -> Serializer | None:
+        return self.obj_type.serializer.get_final()
+
     def pack(self, values: TStructured) -> bytes:
         data = values.pack()
         self.size = values.serializer.size

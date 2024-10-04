@@ -98,6 +98,8 @@ class array(Generic[S, T], list[T], requires_indexing):
         item_serializer = annotated.transform(item_type)
         if not isinstance(item_serializer, Serializer):
             raise TypeError(f'invalid array item type: {item_type!r}')
+        elif item_serializer.is_final():
+            raise TypeError(f'invalid array item type: {item_type!r}. Final serializers cannot be used.')
         # All good, check for specializations for struct.Struct unpackable
         if (
             isinstance(item_serializer, StructSerializer)

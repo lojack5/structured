@@ -51,6 +51,9 @@ class ConditionalSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
                 'Not enough default arguments provided to Condition, expected '
                 f'{self.num_values}, got {expected}'
             )
+        
+    def get_final(self) -> Serializer | None:
+        return self.serializers[True].get_final()
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
         serializer = self.serializers[True].with_byte_order(byte_order)

@@ -52,6 +52,11 @@ class AUnion(Serializer):
         }
         self.size = 0
 
+    def get_final(self) -> Serializer | None:
+        for serializer in self.result_map.values():
+            if serializer.is_final():
+                return serializer.get_final()
+
     @staticmethod
     def validate_serializer(hint) -> Serializer:
         serializer = annotated.transform(hint)
