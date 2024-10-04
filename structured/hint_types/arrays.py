@@ -63,9 +63,7 @@ class Header:
             return StructuredAlias(cls, (length_kind, size_kind))  # type: ignore
         # Check length argument
         if length_kind in _SizeTypes:
-            unwrapped = annotated(StructSerializer[int]).extract(length_kind)
-            if unwrapped:  # Always True for _SizeTypes
-                length_kind = unwrapped
+            length_kind = annotated.transform(length_kind)
         elif isinstance(length_kind, int):
             if length_kind < 0:
                 raise ValueError(
@@ -77,9 +75,7 @@ class Header:
         if size_kind is not None and size_kind not in _SizeTypes:
             raise TypeError(f'invalid array size check type: {size_kind!r}')
         else:
-            unwrapped = annotated(StructSerializer[int]).extract(size_kind)
-            if unwrapped:  # Always True for _SizeTypes
-                size_kind = unwrapped
+            size_kind = annotated.transform(size_kind)
         # All good
         return cls(length_kind, size_kind)
 
@@ -99,8 +95,8 @@ class array(Generic[S, T], list[T], requires_indexing):
         elif not isinstance(header, Header):
             raise TypeError(f'invalid array header type: {header!r}')
         # Item type checks
-        item_serializer = annotated(Serializer).extract(item_type)
-        if not item_serializer:
+        item_serializer = annotated.transform(item_type)
+        if not isinstance(item_serializer, Serializer):
             raise TypeError(f'invalid array item type: {item_type!r}')
         # All good, check for specializations for struct.Struct unpackable
         if (

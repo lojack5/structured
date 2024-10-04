@@ -27,7 +27,7 @@ def test_errors() -> None:
 
 class TestChar:
     def test_static(self) -> None:
-        unwrapped = annotated(Serializer).extract(char[13])
+        unwrapped = annotated.transform(char[13])
         assert isinstance(unwrapped, StructSerializer)
         assert unwrapped.format == '13s'
 

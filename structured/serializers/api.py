@@ -364,9 +364,10 @@ class _SpecializedCompoundSerializer(
         size = 0
         i = 0
         for serializer in self.serializers:
-            count = serializer.num_values
-            yield serializer.prepack(self.partial_object), values[i : i + count], size
-            size += serializer.size
+            specialized = serializer.prepack(self.partial_object)
+            count = specialized.num_values
+            yield specialized, values[i : i + count], size
+            size += specialized.size
             i += count
         self.size = size
         self.origin.size = size
@@ -374,7 +375,8 @@ class _SpecializedCompoundSerializer(
     def _iter_unpackers(self) -> Iterable[tuple[Serializer, int]]:
         size = 0
         for serializer in self.serializers:
-            yield serializer.preunpack(self.partial_object), size
-            size += serializer.size
+            specialized = serializer.preunpack(self.partial_object)
+            yield specialized, size
+            size += specialized.size
         self.size = size
         self.origin.size = size

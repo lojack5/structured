@@ -16,7 +16,7 @@ from . import standard_tests
 
 
 def test_counted() -> None:
-    cls = annotated(Serializer).extract(pad[2])
+    cls = annotated.transform(pad[2])
     assert isinstance(cls, StructSerializer)
     assert cls.format == '2x'
     assert cls.num_values == 0

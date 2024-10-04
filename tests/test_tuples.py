@@ -15,6 +15,7 @@ def test_tuple_detection():
         a: tuple[int8, int16]
 
     assert isinstance(Base.serializer, TupleSerializer)
+    assert Base.serializer.serializer.format == 'bh'
 
     target_obj = Base((1, 2))
     target_data = struct.pack('bh', 1, 2)

@@ -23,6 +23,7 @@ from ..type_checking import (
     WritableBuffer,
     annotated,
     get_union_args,
+    isunion,
 )
 from .api import Serializer
 
@@ -53,8 +54,8 @@ class AUnion(Serializer):
 
     @staticmethod
     def validate_serializer(hint) -> Serializer:
-        serializer = annotated(Serializer).extract(hint)
-        if serializer is None:
+        serializer = annotated.transform(hint)
+        if not isinstance(serializer, Serializer):
             raise TypeError(f'Union results must be serializable types, got {hint!r}.')
         elif serializer.num_values != 1:
             raise ValueError('Union results must serializer a single item.')
@@ -85,12 +86,14 @@ class AUnion(Serializer):
             return serializer.preunpack(self._partial_object)
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any) -> Any:
-        if union_args := get_union_args(actual):
-            extract = annotated(Serializer).extract
-            if all(map(extract, union_args)):
-                if isinstance(unwrapped, AUnion):
-                    return unwrapped
+    def _transform(base_type: Any, hint: Any) -> Any:
+        if isinstance(hint, AUnion):
+            if isunion(base_type) and (union_args := get_union_args(base_type)):
+                union_args = tuple(map(annotated.transform, union_args))
+                if all(isinstance(x, Serializer) for x in union_args):
+                    return hint
+            else:
+                raise TypeError('Decider hinted on non-union type')
 
 
 annotated.register_transform(AUnion._transform)
@@ -173,8 +176,8 @@ class LookaheadDecider(AUnion):
     ) -> None:
         super().__init__(result_map, default)
         self.decider = write_decider
-        serializer = annotated(Serializer).extract(read_ahead_serializer)
-        if not serializer:
+        serializer = annotated.transform(read_ahead_serializer)
+        if not isinstance(serializer, Serializer):
             raise TypeError(
                 'read_ahead_serializer must be a Serializer, got '
                 f'{read_ahead_serializer!r}.'

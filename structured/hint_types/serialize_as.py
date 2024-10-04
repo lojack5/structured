@@ -17,9 +17,8 @@ class SerializeAs(Generic[S, T]):
     serializer: StructSerializer
 
     def __init__(self, hint: S) -> None:
-        extracter = annotated(StructSerializer)
-        serializer = extracter.extract(hint)
-        if not serializer:
+        serializer = annotated.transform(hint)
+        if not isinstance(serializer, StructSerializer):
             raise TypeError(f'SerializeAs requires a basic type, got {hint}')
         elif serializer.num_values != 1:
             raise TypeError(
@@ -33,13 +32,13 @@ class SerializeAs(Generic[S, T]):
         return type(self)(StructActionSerializer(st.format, actions=(action,)))
 
     @staticmethod
-    def _transform(unwrapped: Any, actual: Any) -> Any:
-        if isinstance(unwrapped, SerializeAs):
-            st = unwrapped.serializer
+    def _transform(base_type: Any, hint: Any) -> Any:
+        if isinstance(hint, SerializeAs):
+            st = hint.serializer
             if isinstance(st, StructActionSerializer):
                 return st
             else:
-                return StructActionSerializer(st.format, actions=(actual,))
+                return StructActionSerializer(st.format, actions=(base_type,))
 
 
 annotated.register_transform(SerializeAs._transform)
