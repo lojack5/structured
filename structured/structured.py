@@ -28,10 +28,8 @@ from .type_checking import (
     Optional,
     ReadableBuffer,
     Self,
-    TypeGuard,
     TypeVar,
     Union,
-    UnionType,
     WritableBuffer,
     annotated,
     get_annotations,
@@ -48,13 +46,18 @@ from .utils import StructuredAlias, attrgetter, zips
 def ispad(annotation: Any) -> bool:
     """Detect pad[x] generated StructSerializers."""
     serializer = annotated.transform(annotation)
-    return isinstance(serializer, StructSerializer) and serializer.num_values == 0 and serializer.format.endswith('x')
-
+    return (
+        isinstance(serializer, StructSerializer)
+        and serializer.num_values == 0
+        and serializer.format.endswith('x')
+    )
 
 
 def final_transform(base_type: Any, hint: Any) -> Serializer | None:
     if isinstance(hint, Serializer):
         return hint
+
+
 annotated.register_final_transform(final_transform)
 
 
@@ -435,11 +438,13 @@ class Structured(metaclass=StructuredMeta):
             raise TypeError(f'{cls.__name__} is not a Generic')
         # First handle the direct base class
         annotations = {}
+
         def alias_tvar_check(base_type: Any, hint: Any):
             if isinstance(base_type, (StructuredAlias, TypeVar)):
                 return base_type
             if isinstance(hint, (StructuredAlias, TypeVar)):
                 return hint
+
         cls_annotations = get_annotations(cls)
         for attr, attr_type in get_type_hints(cls, include_extras=True).items():
             if attr in cls_annotations:

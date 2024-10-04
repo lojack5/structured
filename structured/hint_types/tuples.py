@@ -3,7 +3,7 @@ Provides transformations for tuple type hints into serializers.
 """
 
 from ..serializers import Serializer, TupleSerializer
-from ..type_checking import Any, TypeVar, annotated, get_tuple_args, istuple, Tuple
+from ..type_checking import Any, Tuple, TypeVar, annotated, get_tuple_args, istuple
 from ..utils import StructuredAlias
 
 

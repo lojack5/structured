@@ -19,7 +19,6 @@ from ..serializers import (
     DynamicCharSerializer,
     NETCharSerializer,
     Serializer,
-    StructSerializer,
     TCharSerializer,
     TerminatedCharSerializer,
     UnicodeSerializer,
