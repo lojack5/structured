@@ -5,6 +5,7 @@ from typing import Union, Annotated
 import pytest
 
 from structured import *
+from . import Final
 
 
 class TestStructSerializers:
@@ -24,7 +25,6 @@ class TestStructSerializers:
         with pytest.raises(TypeError):
             1 + st3     # type: ignore
 
-
     def test_add(self) -> None:
         st = StructSerializer('b')
         st2 = StructActionSerializer('b')
@@ -40,7 +40,6 @@ class TestStructSerializers:
         null = NullSerializer()
         assert st2 + null is st2
 
-
     def test_eq(self) -> None:
         # This should hit the NotImplemented case, which falls back to
         # object.__eq__, which will be False
@@ -53,7 +52,6 @@ class TestStructSerializers:
         assert st2 == st2
         assert st1 != st2
 
-
     def test_hash(self) -> None:
         st1 = StructSerializer('b')
         st2 = StructActionSerializer('b')
@@ -65,7 +63,6 @@ class TestStructSerializers:
             st3: 3,
         }
         assert len(d) == 3
-
 
     def test_with_byte_order(self) -> None:
         st = StructActionSerializer('b')
@@ -82,8 +79,16 @@ class TestNullSerializer:
     def test_add(self) -> None:
         # Error case is the only one not tested by other tests
         null = NullSerializer()
+        final = Final()
         with pytest.raises(TypeError):
             null + 1    # type: ignore
+
+        serializer = StructSerializer('B')
+        assert serializer + null is serializer
+        assert null + serializer is serializer
+
+        assert final + null is final
+        assert null + final is final
 
 
 class TestCompoundSerializer:
@@ -115,11 +120,26 @@ class TestCompoundSerializer:
             1 + self.Base1.serializer   # type: ignore
         with pytest.raises(TypeError):
             self.Base1.serializer + 1   # type: ignore
+        # Test explicitly here since CompoundSerializer.__add__ has its own
+        # implementation
+        final_compound = self.Base1.serializer + Final()
+        with pytest.raises(TypeError):
+            final_compound + StructSerializer('B')
+
 
     def test_preprocess(self) -> None:
         # Sort of a silly test, but here it is
         preprocessed = self.Base1.serializer.preunpack(None)
         assert preprocessed is preprocessed.preunpack(None)
+
+    def test_finality(self) -> None:
+        final = Final()
+        class Base(Structured):
+            a: uint8
+            b: final
+
+        assert isinstance(Base.serializer, CompoundSerializer)
+        assert Base.serializer.is_final()
 
 
 class TestUnionSerializer:
@@ -130,3 +150,9 @@ class TestUnionSerializer:
         with pytest.raises(TypeError):
             LookaheadDecider(1, lambda x: 0, {0: int8})
 
+    def test_finality(self) -> None:
+        class Base(Structured):
+            # Note: the actual serializer(s) used for unpacking occur in the LookbackDecider
+            a: Annotated[uint32|float32, LookbackDecider(lambda x: 0, {0:uint32, 1:Final()})]
+
+        assert Base.serializer.is_final()

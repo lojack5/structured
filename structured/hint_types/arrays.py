@@ -99,7 +99,10 @@ class array(Generic[S, T], list[T], requires_indexing):
         if not isinstance(item_serializer, Serializer):
             raise TypeError(f'invalid array item type: {item_type!r}')
         elif item_serializer.is_final():
-            raise TypeError(f'invalid array item type: {item_type!r}. Final serializers cannot be used.')
+            raise TypeError(
+                f'invalid array item type: {item_type!r} contains final '
+                f'{item_serializer.get_final()}. Final serializers cannot be used.'
+            )
         # All good, check for specializations for struct.Struct unpackable
         if (
             isinstance(item_serializer, StructSerializer)

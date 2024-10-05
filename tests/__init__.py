@@ -1,6 +1,14 @@
 import io
 
-from structured import Structured
+from structured import Structured, Serializer
+
+
+class Final(Serializer):
+    num_values = 1
+    size = 0
+
+    def get_final(self):
+        return self
 
 
 def standard_tests(target_obj: Structured, target_data: bytes):

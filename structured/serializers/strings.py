@@ -22,7 +22,6 @@ from ..type_checking import (
     BinaryIO,
     Callable,
     ClassVar,
-    Literal,
     ReadableBuffer,
     Self,
     Union,
@@ -138,10 +137,11 @@ class DynamicCharSerializer(Serializer[bytes]):
         self.size = self.st.size + count
         st = _single_char @ count
         return st.unpack_read(readable)
-    
+
 
 class ConsumingCharSerializer(Serializer[bytes]):
     """Serializer for using all remainging bytes for the character data."""
+
     num_values: ClassVar[int] = 1
 
     def __init__(self) -> None:
@@ -153,11 +153,13 @@ class ConsumingCharSerializer(Serializer[bytes]):
     def pack(self, *values: Unpack[tuple[bytes]]) -> bytes:
         self.size = len(values[0])
         return values[0]
-    
-    def pack_into(self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[bytes]]) -> None:
+
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[bytes]]
+    ) -> None:
         data = values[0]
         self.size = len(data)
-        buffer[offset:offset + self.size] = data
+        buffer[offset : offset + self.size] = data
 
     def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[bytes]]) -> None:
         data = values[0]
@@ -166,17 +168,17 @@ class ConsumingCharSerializer(Serializer[bytes]):
 
     def unpack(self, buffer: ReadableBuffer) -> tuple[bytes]:
         self.size = len(buffer)
-        return buffer,
-    
+        return (buffer,)
+
     def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
         self.size = len(buffer) - offset
-        return buffer[offset:],
-    
+        return (buffer[offset:],)
+
     def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
         data = readable.read()
         self.size = len(data)
-        return data,
-        
+        return (data,)
+
 
 class TerminatedCharSerializer(Serializer[bytes]):
     """Serializer for handling terminated strings (typically null-terminated)."""

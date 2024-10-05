@@ -6,7 +6,7 @@ import pytest
 
 from structured import *
 
-from . import standard_tests
+from . import standard_tests, Final
 
 
 class Item(Structured):
@@ -212,3 +212,8 @@ def test_dynamic_checked_structured(items: list[Item]):
     struct.pack_into('3I', buffer, 0, 42, 3, 0) # write over data_size with 0
     with pytest.raises(ValueError):
         Compound.create_unpack_from(buffer)
+
+
+def test_finality() -> None:
+    with pytest.raises(TypeError):
+        array[Header[3], Final()]

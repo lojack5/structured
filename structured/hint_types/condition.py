@@ -40,7 +40,10 @@ class Condition(Generic[S, Unpack[Ts]]):
     def _transform(base_type: Any, hint: Any) -> Any:
         if isinstance(hint, Condition):
             if not isinstance(base_type, Serializer):
-                raise TypeError('Condition must be paired with a serialized type.')
+                raise TypeError(
+                    'Condition must be paired with a serialized type, got '
+                    f'{base_type}'
+                )
             return ConditionalSerializer(base_type, hint.condition, hint.defaults)
 
 

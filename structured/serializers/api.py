@@ -40,7 +40,6 @@ from ..type_checking import (
     ClassVar,
     Generic,
     Iterable,
-    NoReturn,
     ReadableBuffer,
     Self,
     Ss,
@@ -157,13 +156,13 @@ class Serializer(Generic[Unpack[Ts]]):
         :return: A new serializer, or this one if no changes were needed.
         """
         return self
-    
+
     def is_final(self) -> bool:
         """Indicates if this serializer must be the final serializer in a
         chain.
         """
         return self.get_final() is not None
-    
+
     def get_final(self) -> Serializer | None:
         """Get the serializer (if any) that makes this serializer the final
         serializer.
@@ -178,7 +177,10 @@ class Serializer(Generic[Unpack[Ts]]):
             return NotImplemented
         elif self.is_final():
             final = self.get_final()
-            raise TypeError(f'{type(self).__name__} must be the final serializer (is or contains {final}), but is followed by {other}')
+            raise TypeError(
+                f'{type(self).__name__} must be the final serializer (is or contains'
+                f' {final}), but is followed by {other}'
+            )
         if isinstance(other, CompoundSerializer):
             # Allow __radd__ to work
             return NotImplemented
@@ -225,7 +227,7 @@ class NullSerializer(Serializer[Unpack[tuple[()]]]):
 
     def __radd__(self, other: TSerializer) -> TSerializer:
         return self.__add__(other)
-    
+
 
 class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
     """A serializer that chains together multiple serializers."""
@@ -247,9 +249,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         )
 
     def get_final(self) -> Serializer | None:
-        for serializer in self.serializers:
-            if serializer.is_final():
-                return serializer
+        return self.serializers[-1].get_final()
 
     def prepack(self, partial_object: Any) -> Serializer:
         return self.preprocess(partial_object)
@@ -343,6 +343,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
         serializers: list[Serializer], to_append: Iterable[Serializer]
     ) -> CompoundSerializer:
         for candidate in to_append:
+            # Here is where the .is_final() check happens
             joined = serializers[-1] + candidate
             if isinstance(joined, CompoundSerializer):
                 # Don't need to make nested CompoundSerializers

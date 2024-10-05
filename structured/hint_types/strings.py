@@ -17,8 +17,8 @@ from functools import cache, partial
 
 from ..base_types import requires_indexing
 from ..serializers import (
-    DynamicCharSerializer,
     ConsumingCharSerializer,
+    DynamicCharSerializer,
     NETCharSerializer,
     Serializer,
     TCharSerializer,
