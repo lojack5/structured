@@ -14,6 +14,7 @@ from ..type_checking import (
     ClassVar,
     Generic,
     Iterable,
+    Optional,
     ReadableBuffer,
     Ts,
     Unpack,
@@ -28,7 +29,7 @@ class TupleSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
     def __init__(self, serializers: Iterable[Serializer]) -> None:
         self.serializer = sum(serializers, NullSerializer())
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         return self.serializer.get_final()
 
     @property

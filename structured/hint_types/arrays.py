@@ -20,7 +20,7 @@ from ..serializers import (
     StaticStructArraySerializer,
     StructSerializer,
 )
-from ..type_checking import Annotated, Generic, S, Self, T, TypeVar, annotated
+from ..type_checking import Annotated, Generic, S, Self, T, TypeVar, annotated, Optional
 from ..utils import StructuredAlias
 from .basic_types import _SizeTypes
 
@@ -31,7 +31,7 @@ class Header:
     def __init__(
         self,
         count: int | StructSerializer[int],
-        data_size: StructSerializer[int] | None,
+        data_size: Optional[StructSerializer[int]],
     ) -> None:
         self.count = count
         self.data_size = data_size

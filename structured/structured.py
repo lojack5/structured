@@ -53,7 +53,7 @@ def ispad(annotation: Any) -> bool:
     )
 
 
-def final_transform(base_type: Any, hint: Any) -> Serializer | None:
+def final_transform(base_type: Any, hint: Any) -> Optional[Serializer]:
     if isinstance(hint, Serializer):
         return hint
 
@@ -120,8 +120,8 @@ def get_structured_base(cls: type[Structured]) -> Optional[type[Structured]]:
 def gen_init(
     args: dict[str, Any],
     *,
-    globalsns: dict[str, Any] | None = None,
-    localsns: dict[str, Any] | None = None,
+    globalsns: Optional[dict[str, Any]] = None,
+    localsns: Optional[dict[str, Any]] = None,
 ) -> Callable:
     """Generates an __init__ method for a class.  `args` should be a mapping of
     arguments to type annotations to be used in the method definition.

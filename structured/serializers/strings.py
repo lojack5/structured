@@ -22,6 +22,7 @@ from ..type_checking import (
     BinaryIO,
     Callable,
     ClassVar,
+    Optional,
     ReadableBuffer,
     Self,
     Union,
@@ -368,7 +369,7 @@ class UnicodeSerializer(Serializer[str]):
         self.encoder = encoder
         self.decoder = decoder
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         return self.serializer.get_final()
 
     @property

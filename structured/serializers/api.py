@@ -40,6 +40,7 @@ from ..type_checking import (
     ClassVar,
     Generic,
     Iterable,
+    Optional,
     ReadableBuffer,
     Self,
     Ss,
@@ -163,7 +164,7 @@ class Serializer(Generic[Unpack[Ts]]):
         """
         return self.get_final() is not None
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         """Get the serializer (if any) that makes this serializer the final
         serializer.
         """
@@ -248,7 +249,7 @@ class CompoundSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
             for serializer in serializers
         )
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         return self.serializers[-1].get_final()
 
     def prepack(self, partial_object: Any) -> Serializer:

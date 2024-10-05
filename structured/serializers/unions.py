@@ -19,6 +19,7 @@ from ..type_checking import (
     Callable,
     ClassVar,
     Iterable,
+    Optional,
     ReadableBuffer,
     WritableBuffer,
     annotated,
@@ -35,8 +36,8 @@ class AUnion(Serializer):
 
     num_values: ClassVar[int] = 1
     result_map: dict[Any, Serializer]
-    default: Serializer | None
-    _last_serializer: Serializer | None
+    default: Optional[Serializer]
+    _last_serializer: Optional[Serializer]
 
     def __init__(self, result_map: dict[Any, Any], default: Any = None) -> None:
         """result_map should be a mapping of possible return values from `decider`
@@ -52,7 +53,7 @@ class AUnion(Serializer):
         }
         self.size = 0
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         for serializer in self.result_map.values():
             if serializer.is_final():
                 return serializer.get_final()

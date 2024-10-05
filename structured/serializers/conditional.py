@@ -3,6 +3,7 @@ Serializer that wraps another in a condition. When the condition evaluates
 to a Truthy value, the original serializer operates as normal. Otherwise,
 it acts as if the serializer was not there.
 """
+from __future__ import annotations
 
 __all__ = [
     'ConditionalSerializer',
@@ -14,6 +15,7 @@ from ..type_checking import (
     BinaryIO,
     Callable,
     Generic,
+    Optional,
     ReadableBuffer,
     Self,
     Ts,
@@ -52,7 +54,7 @@ class ConditionalSerializer(Generic[Unpack[Ts]], Serializer[Unpack[Ts]]):
                 f'{self.num_values}, got {expected}'
             )
 
-    def get_final(self) -> Serializer | None:
+    def get_final(self) -> Optional[Serializer]:
         return self.serializers[True].get_final()
 
     def with_byte_order(self, byte_order: ByteOrder) -> Self:
