@@ -10,6 +10,7 @@ import struct
 __all__ = [
     'TerminatedCharSerializer',
     'DynamicCharSerializer',
+    'ConsumingCharSerializer',
     'NETCharSerializer',
     'static_char_serializer',
     'UnicodeSerializer',
@@ -21,6 +22,7 @@ from ..type_checking import (
     BinaryIO,
     Callable,
     ClassVar,
+    Optional,
     ReadableBuffer,
     Self,
     Union,
@@ -136,6 +138,47 @@ class DynamicCharSerializer(Serializer[bytes]):
         self.size = self.st.size + count
         st = _single_char @ count
         return st.unpack_read(readable)
+
+
+class ConsumingCharSerializer(Serializer[bytes]):
+    """Serializer for using all remainging bytes for the character data."""
+
+    num_values: ClassVar[int] = 1
+
+    def __init__(self) -> None:
+        self.size = 0
+
+    def get_final(self) -> Self:
+        return self
+
+    def pack(self, *values: Unpack[tuple[bytes]]) -> bytes:
+        self.size = len(values[0])
+        return values[0]
+
+    def pack_into(
+        self, buffer: WritableBuffer, offset: int, *values: Unpack[tuple[bytes]]
+    ) -> None:
+        data = values[0]
+        self.size = len(data)
+        buffer[offset : offset + self.size] = data
+
+    def pack_write(self, writable: BinaryIO, *values: Unpack[tuple[bytes]]) -> None:
+        data = values[0]
+        self.size = len(data)
+        writable.write(data)
+
+    def unpack(self, buffer: ReadableBuffer) -> tuple[bytes]:
+        self.size = len(buffer)
+        return (buffer,)
+
+    def unpack_from(self, buffer: ReadableBuffer, offset: int = 0) -> tuple[bytes]:
+        self.size = len(buffer) - offset
+        return (buffer[offset:],)
+
+    def unpack_read(self, readable: BinaryIO) -> tuple[bytes]:
+        data = readable.read()
+        self.size = len(data)
+        return (data,)
 
 
 class TerminatedCharSerializer(Serializer[bytes]):
@@ -312,6 +355,7 @@ TCharSerializer = Union[
     DynamicCharSerializer,
     NETCharSerializer,
     TerminatedCharSerializer,
+    ConsumingCharSerializer,
 ]
 
 
@@ -324,6 +368,9 @@ class UnicodeSerializer(Serializer[str]):
         self.serializer = char_serializer
         self.encoder = encoder
         self.decoder = decoder
+
+    def get_final(self) -> Optional[Serializer]:
+        return self.serializer.get_final()
 
     @property
     def size(self) -> int:

@@ -12,10 +12,12 @@ __all__ = [
     'NET',
 ]
 
+import math
 from functools import cache, partial
 
 from ..base_types import requires_indexing
 from ..serializers import (
+    ConsumingCharSerializer,
     DynamicCharSerializer,
     NETCharSerializer,
     Serializer,
@@ -72,6 +74,8 @@ class char(bytes, requires_indexing):
             return StructuredAlias(cls, (count,))  # type: ignore
         elif isinstance(count, bytes):
             serializer = TerminatedCharSerializer(count)
+        elif math.isinf(count) and count > 0:
+            serializer = ConsumingCharSerializer()
         else:
             raise TypeError(
                 f'{cls.__qualname__}[] count must be an int, NET, terminator '

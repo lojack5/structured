@@ -12,6 +12,7 @@ from ..type_checking import (
     BinaryIO,
     ClassVar,
     Generic,
+    Optional,
     ReadableBuffer,
     TypeVar,
     WritableBuffer,
@@ -43,6 +44,9 @@ class StructuredSerializer(Generic[TStructured], Serializer[TStructured]):
     def __init__(self, obj_type: type[TStructured]) -> None:
         self.obj_type = obj_type
         self.size = 0
+
+    def get_final(self) -> Optional[Serializer]:
+        return self.obj_type.serializer.get_final()
 
     def pack(self, values: TStructured) -> bytes:
         data = values.pack()

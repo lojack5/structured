@@ -20,7 +20,7 @@ from ..serializers import (
     StaticStructArraySerializer,
     StructSerializer,
 )
-from ..type_checking import Annotated, Generic, S, Self, T, TypeVar, annotated
+from ..type_checking import Annotated, Generic, Optional, S, Self, T, TypeVar, annotated
 from ..utils import StructuredAlias
 from .basic_types import _SizeTypes
 
@@ -31,7 +31,7 @@ class Header:
     def __init__(
         self,
         count: int | StructSerializer[int],
-        data_size: StructSerializer[int] | None,
+        data_size: Optional[StructSerializer[int]],
     ) -> None:
         self.count = count
         self.data_size = data_size
@@ -98,6 +98,11 @@ class array(Generic[S, T], list[T], requires_indexing):
         item_serializer = annotated.transform(item_type)
         if not isinstance(item_serializer, Serializer):
             raise TypeError(f'invalid array item type: {item_type!r}')
+        elif item_serializer.is_final():
+            raise TypeError(
+                f'invalid array item type: {item_type!r} contains final '
+                f'{item_serializer.get_final()}. Final serializers cannot be used.'
+            )
         # All good, check for specializations for struct.Struct unpackable
         if (
             isinstance(item_serializer, StructSerializer)

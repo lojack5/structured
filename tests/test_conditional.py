@@ -5,7 +5,7 @@ import pytest
 from structured import *
 from structured.type_checking import Annotated
 
-from . import standard_tests
+from . import standard_tests, Final
 
 
 class TestConditional:
@@ -51,3 +51,11 @@ class TestConditional:
         assert v3_obj.pack() == v2_data
         v3_obj.version = 1
         assert v3_obj.pack() == v1_data
+
+    def test_finality(self) -> None:
+        class Base(Structured):
+            a: Annotated[int, Final(), Condition(lambda x: True, 0)]
+
+        assert isinstance(Base.serializer, ConditionalSerializer)
+        assert Base.serializer.serializers[True].is_final()
+        assert Base.serializer.is_final()

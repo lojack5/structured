@@ -215,6 +215,9 @@ For unpacking bytes other than with a fixed length, you have a few more options 
   discarded). For packing, the `bytes` will be written, and a terminator will be written at the end
   if not already written.  The usual case for this is NULL-terminated byte-strings, so a quick alias
   for that is provided: `null_char`.
+- `char[math.inf]`: This indicates that every remaining byte in the input stream should be unpacked
+  (read to the end). Note that this means no other serialized types can occur after this item.
+- `unicode[math.inf]`: Like `char[math.inf]`, but the bytes are then decoded into a string.
 
 
 ### `unicode`

@@ -1,5 +1,6 @@
 import io
 import struct
+import math
 
 import pytest
 
@@ -22,7 +23,6 @@ def test_errors() -> None:
         char[1.1]
     with pytest.raises(ValueError):
         char[b'aa']
-
 
 
 class TestChar:
@@ -119,7 +119,6 @@ class TestChar:
         #with pytest.raises(ValueError):
         #    Base.create_unpack(error_data)
 
-
     def test_net(self) -> None:
         # NOTE: Code for encoding/decoding the string length is dubious.
         # Source is old Wrye Base code for reading/writing OMODs, but I've
@@ -165,6 +164,23 @@ class TestChar:
             assert stream.getvalue()[:partial_size] == partial_target
             stream.seek(0)
             assert Base.create_unpack_read(stream) == target_obj
+
+    def test_finality(self) -> None:
+        assert isinstance(s := annotated.transform(char[math.inf]), Serializer)
+        assert s.is_final()
+
+    def test_consuming(self) -> None:
+        class Base(Structured):
+            a: uint8
+            b: char[math.inf]
+
+        target_data1 = struct.pack('B', 42) + b'Hello'
+        target_obj = Base(42, b'Hello')
+        standard_tests(target_obj, target_data1)
+
+        target_data2 = struct.pack('B', 42) + b''
+        target_obj.b = b''
+        standard_tests(target_obj, target_data2)
 
 
 class TestUnicode:
@@ -275,3 +291,7 @@ class TestUnicode:
         with pytest.raises(ValueError):
             with io.BytesIO(error_data) as ins:
                 Base.create_unpack_read(ins)
+
+    def test_finality(self) -> None:
+        assert isinstance(s := annotated.transform(unicode[math.inf]), Serializer)
+        assert s.is_final()

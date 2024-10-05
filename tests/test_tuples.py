@@ -3,7 +3,7 @@ from typing import Tuple, Generic, TypeVar
 
 from structured import *
 
-from . import standard_tests
+from . import standard_tests, Final
 
 
 T = TypeVar('T')
@@ -51,3 +51,10 @@ def test_generics():
     class ConcreteStruct2(GenericStruct[int8, int16]):
         pass
     assert isinstance(ConcreteStruct2.serializer, TupleSerializer)
+
+
+def test_finality():
+    final = Final()
+    class Base(Structured):
+        a: tuple[int8, final]
+    assert Base.serializer.is_final()
