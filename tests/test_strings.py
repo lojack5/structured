@@ -169,6 +169,19 @@ class TestChar:
         assert isinstance(s := annotated.transform(char[math.inf]), Serializer)
         assert s.is_final()
 
+    def test_consuming(self) -> None:
+        class Base(Structured):
+            a: uint8
+            b: char[math.inf]
+
+        target_data1 = struct.pack('B', 42) + b'Hello'
+        target_obj = Base(42, b'Hello')
+        standard_tests(target_obj, target_data1)
+
+        target_data2 = struct.pack('B', 42) + b''
+        target_obj.b = b''
+        standard_tests(target_obj, target_data2)
+
 
 class TestUnicode:
     def test_default(self) -> None:
