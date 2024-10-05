@@ -153,6 +153,6 @@ class TestUnionSerializer:
     def test_finality(self) -> None:
         class Base(Structured):
             # Note: the actual serializer(s) used for unpacking occur in the LookbackDecider
-            a: Annotated[uint32|float32, LookbackDecider(lambda x: 0, {0:uint32, 1:Final()})]
+            a: Annotated[Union[uint32|float32], LookbackDecider(lambda x: 0, {0:uint32, 1:Final()})]
 
         assert Base.serializer.is_final()
