@@ -3,6 +3,7 @@ Serializer that wraps another in a condition. When the condition evaluates
 to a Truthy value, the original serializer operates as normal. Otherwise,
 it acts as if the serializer was not there.
 """
+
 from __future__ import annotations
 
 __all__ = [

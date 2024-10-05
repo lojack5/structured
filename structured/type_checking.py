@@ -115,7 +115,9 @@ def istuple(annotation: Any) -> TypeGuard[tuple]:
     return get_origin(annotation) in (tuple, Tuple)
 
 
-def get_tuple_args(annotation: Any, fixed_size: bool = True) -> Optional[tuple[Any, ...]]:
+def get_tuple_args(
+    annotation: Any, fixed_size: bool = True
+) -> Optional[tuple[Any, ...]]:
     """Get the arguments to a tuple type hint, or None if the annotation is not
     a tuple hint.  If `fixed_size` is True (default), then the tuple must be
     a fixed length tuple hint.

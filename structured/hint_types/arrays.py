@@ -20,7 +20,7 @@ from ..serializers import (
     StaticStructArraySerializer,
     StructSerializer,
 )
-from ..type_checking import Annotated, Generic, S, Self, T, TypeVar, annotated, Optional
+from ..type_checking import Annotated, Generic, Optional, S, Self, T, TypeVar, annotated
 from ..utils import StructuredAlias
 from .basic_types import _SizeTypes
 
