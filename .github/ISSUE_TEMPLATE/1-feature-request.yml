@@ -1,0 +1,28 @@
+name: Feature Request
+description: Request new functionality.
+title: "[REQUEST]: "
+labels: ["enhancement"]
+assignees:
+  - lojack5
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Not quite everything you need in `structured`? Tell us how we can improve it!
+  - type: textarea
+    id: feature
+    attributes:
+      label: Description
+      description: Let us know the feature you're looking for, and how it'd work.
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use
+      description: Let us know what the feature would be useful for. This could be your specific use case, or even other ways it could be used.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: If there are any other details, feel free to let us know.
