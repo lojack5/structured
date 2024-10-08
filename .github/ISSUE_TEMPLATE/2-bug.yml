@@ -1,0 +1,69 @@
+name: Bug Report
+description: File a bug report.
+title: "[BUG]: "
+labels: ["bug"]
+assignees:
+  - lojack5
+body:
+  - type: markdown
+    attributes:
+      value: |
+        So you found something wrong with `structured`. Some information will help us diagnose and fix it.
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Reproducer
+      description: Give a detailed explanation on how to reproduce the bug, as well as expected behavior and actual behavior.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operation system(s) do you observe this bug on?
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - iOS
+        - Other (specify)
+    validations:
+      required: true
+  - type: input
+    id: os-text
+    attributes:
+      label: Other
+      description: If your operating system isn't listed, or a more specific operating system if the bug doesn't happen on all versions.
+      placeholder: ex. Ubunto Linux 24.04.1 LTS
+  - type: dropdown
+    id: python
+    attributes:
+      label: Python Version
+      multiple: true
+      options:
+        - Python 3.9
+        - Python 3.10
+        - Python 3.11
+        - Python 3.12
+        - Other (specify)
+    validations:
+      required: true
+  - type: input
+    id: python-text
+    attributes:
+      label: Other
+      description: If your Python version isn't listed, or a more specific version (for example, only on Python 3.10.4).
+      placeholder: ex. Pypy 3.10
+  - type: input
+    id: structured
+    attributes:
+      label: structured version
+      description: What version of structured does the error happen on? Note if it doesn't happen on the latest release, we may not address the bug.
+      placeholder: 3.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: more-info
+    attributes:
+      label: Additional Information
+      description: Provide any additional information you feel is needed to understand this bug.
