@@ -1,10 +1,13 @@
 ![tests](https://github.com/lojack5/structured/actions/workflows/tests.yml/badge.svg)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![pypi](https://img.shields.io/pypi/v/structured-classes)](https://pypi.org/project/structured-classes/)
 
+Version 3.1.x is the last version to support Python 3.9.
 
 # structured - creating classes which pack and unpack with Python's `struct` module.
 This is a small little library to let you leverage type hints to define classes which can also be packed and unpacked using Python's `struct` module.  The basic usage is almost like a dataclass:
+
 
 ```python
 class MyClass(Structured):
@@ -12,6 +15,8 @@ class MyClass(Structured):
   version: uint8
 
 a = MyClass(b'', 0)
+
+Get it on PypI
 
 with open('some_file.dat', 'rb') as ins:
   a.unpack_read(ins)
